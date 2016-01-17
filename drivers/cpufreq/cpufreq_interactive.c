@@ -14,7 +14,6 @@
  *
  * Author: Mike Chan (mike@android.com)
  *
- * Hotplugging implementation by TheSSJ
  */
 
 #include <linux/cpu.h>
@@ -34,12 +33,15 @@
 #include <linux/kernel_stat.h>
 #include <asm/cputime.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/cpufreq_interactive.h>
+
+//easy debug switch
+//#define GOVDEBUG
+
 //for adding early suspend and late resume handlers
 #include <linux/earlysuspend.h>
 #include <linux/wait.h>
-
-#define CREATE_TRACE_POINTS
-#include <trace/events/cpufreq_interactive.h>
 
 struct cpufreq_interactive_cpuinfo {
 	struct timer_list cpu_timer;
@@ -108,7 +110,7 @@ struct cpufreq_interactive_tunables {
 	 * The minimum amount of time to spend at a frequency before we can ramp
 	 * down.
 	 */
-#define DEFAULT_MIN_SAMPLE_TIME (40 * USEC_PER_MSEC)
+#define DEFAULT_MIN_SAMPLE_TIME (80 * USEC_PER_MSEC)
 	unsigned long min_sample_time;
 	/*
 	 * The sample rate of the timer used to increase frequency
@@ -151,21 +153,21 @@ struct cpufreq_interactive_tunables {
 /* For cases where we have single governor instance for system */
 struct cpufreq_interactive_tunables *common_tunables;
 
+/*
+ * hack copied from cpufreq_govenor to get this hacked implemenation to compile
+ * after updating against Nov 13 2013 merge with common.git/android-3.10
+ */
+static struct kobject *get_governor_parent_kobj(struct cpufreq_policy *policy)
+
+{
+	if (have_governor_per_policy())
+		return &policy->kobj;
+	else
+		return cpufreq_global_kobject;
+}
+
 static struct attribute_group *get_sysfs_attr(void);
 
-#ifdef CONFIG_IRQ_TIME_ACCOUNTING
-DECLARE_PER_CPU(u64, cpu_hardirq_time);
-DECLARE_PER_CPU(u64, cpu_softirq_time);
-
-static inline u64 irq_time_read(int cpu)
-{
-	/* Return the irq time(us) */
-	u64 irq_time;
-	irq_time = per_cpu(cpu_softirq_time, cpu) + per_cpu(cpu_hardirq_time, cpu);
-	do_div(irq_time, 1000);
-	return irq_time;
-}
-#endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 static void __cpuinit early_suspend_offline_cpus(struct early_suspend *h)
 {
 	#ifdef GOVDEBUG
@@ -174,10 +176,10 @@ static void __cpuinit early_suspend_offline_cpus(struct early_suspend *h)
 	unsigned int cpu;
 	for_each_possible_cpu(cpu)
 	{
-		if (cpu<1) //begin offline work at core 2
+		if (cpu<1) //begin offline work at core 3
 			continue;
 		
-		if (cpu_online(cpu) && num_online_cpus() > 1) //get 3 cores down, cores 2, 3 and 4 
+		if (cpu_online(cpu) && num_online_cpus() > 1) //get 2 cores down, cores 3 and 4 
 			cpu_down(cpu);
 	}
 	#endif
@@ -203,6 +205,20 @@ static struct early_suspend hotplug_auxcpus_desc __refdata = {
 	.suspend = early_suspend_offline_cpus,
 	.resume = late_resume_online_cpus,
 };
+
+#ifdef CONFIG_IRQ_TIME_ACCOUNTING
+DECLARE_PER_CPU(u64, cpu_hardirq_time);
+DECLARE_PER_CPU(u64, cpu_softirq_time);
+
+static inline u64 irq_time_read(int cpu)
+{
+	/* Return the irq time(us) */
+	u64 irq_time;
+	irq_time = per_cpu(cpu_softirq_time, cpu) + per_cpu(cpu_hardirq_time, cpu);
+	do_div(irq_time, 1000);
+	return irq_time;
+}
+#endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 
 static inline cputime64_t get_cpu_idle_time_jiffy(unsigned int cpu,
 						  cputime64_t *wall)
@@ -965,7 +981,7 @@ static ssize_t show_target_loads(
 		ret += sprintf(buf + ret, "%u%s", tunables->target_loads[i],
 			       i & 0x1 ? ":" : " ");
 
-	sprintf(buf + ret - 1, "\n");
+	ret += sprintf(buf + --ret, "\n");
 	spin_unlock_irqrestore(&tunables->target_loads_lock, flags);
 	return ret;
 }
@@ -1005,7 +1021,7 @@ static ssize_t show_above_hispeed_delay(
 			       tunables->above_hispeed_delay[i],
 			       i & 0x1 ? ":" : " ");
 
-	sprintf(buf + ret - 1, "\n");
+	ret += sprintf(buf + --ret, "\n");
 	spin_unlock_irqrestore(&tunables->above_hispeed_delay_lock, flags);
 	return ret;
 }
@@ -1430,16 +1446,16 @@ gov_sys_pol_attr_rw(iowait_load_threshold);
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 
 static struct global_attr boostpulse_gov_sys =
-	__ATTR(boostpulse, 0222, NULL, store_boostpulse_gov_sys);
+	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_sys);
 
 static struct freq_attr boostpulse_gov_pol =
-	__ATTR(boostpulse, 0222, NULL, store_boostpulse_gov_pol);
+	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_pol);
 
 static struct global_attr touchboostpulse_gov_sys =
-	__ATTR(touchboostpulse, 0222, NULL, store_touchboostpulse_gov_sys);
+	__ATTR(touchboostpulse, 0200, NULL, store_touchboostpulse_gov_sys);
 
 static struct freq_attr touchboostpulse_gov_pol =
-	__ATTR(touchboostpulse, 0222, NULL, store_touchboostpulse_gov_pol);
+	__ATTR(touchboostpulse, 0200, NULL, store_touchboostpulse_gov_pol);
 
 /* One Governor instance for entire system */
 static struct attribute *interactive_attributes_gov_sys[] = {
@@ -1525,18 +1541,6 @@ static struct notifier_block cpufreq_interactive_idle_nb = {
 	.notifier_call = cpufreq_interactive_idle_notifier,
 };
 
-/*
- * hack copied from cpufreq_govenor to get this hacked implemenation to compile
- * after updating against Nov 13 2013 merge with common.git/android-3.10
- */
-static struct kobject *get_governor_parent_kobj(struct cpufreq_policy *policy)
-{
-	if (have_governor_per_policy())
-		return &policy->kobj;
-	else
-		return cpufreq_global_kobject;
-}
-
 
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		unsigned int event)
@@ -1607,7 +1611,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			idle_notifier_register(&cpufreq_interactive_idle_nb);
 			cpufreq_register_notifier(&cpufreq_notifier_block,
 					CPUFREQ_TRANSITION_NOTIFIER);
-		register_early_suspend(&hotplug_auxcpus_desc);
+					register_early_suspend(&hotplug_auxcpus_desc);
 		}
 
 		policy->governor_data = tunables;
@@ -1639,10 +1643,10 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 
 		freq_table = cpufreq_frequency_get_table(policy->cpu);
 		if (!tunables->hispeed_freq)
-			tunables->hispeed_freq = policy->max;
+			tunables->hispeed_freq = policy->max - 500000;
 
 		if (!tunables->touchboost_freq)
-			tunables->touchboost_freq = policy->max;
+			tunables->touchboost_freq = policy->max - 500000;
 		for_each_cpu(j, policy->cpus) {
 			pcpu = &per_cpu(cpuinfo, j);
 			pcpu->policy = policy;

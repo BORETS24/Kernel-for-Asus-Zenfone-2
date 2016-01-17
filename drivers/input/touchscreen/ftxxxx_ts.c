@@ -411,8 +411,9 @@ static int fts_read_Gesturedata(struct ftxxxx_ts_data *data)
 	unsigned char buf[FTS_GESTURE_POINTS * 3] = { 0 };
 	int ret = -1;
 	int i = 0;
+	int gesture_id;
 	buf[0] = 0xd3;
-	int gesture_id = 0;
+	gesture_id = 0;
 
 	pointnum = 0;
 

@@ -1455,6 +1455,11 @@ void dhd_enable_packet_filter(int value, dhd_pub_t *dhd)
 
 static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 {
+	char iovbuf[32];
+	uint roamvar;
+	uint nd_ra_filter;
+	int bcn_li_dtim;
+	int ret;
 
 DHD_ERROR(("%s: %d\n", __FUNCTION__, value));
 
@@ -1462,13 +1467,12 @@ DHD_ERROR(("%s: %d\n", __FUNCTION__, value));
 	int power_mode = PM_MAX;
 #endif /* SUPPORT_PM2_ONLY */
 	/* wl_pkt_filter_enable_t	enable_parm; */
-	char iovbuf[32];
-	int bcn_li_dtim = 0; /* Default bcn_li_dtim in resume mode is 0 */
+	bcn_li_dtim = 0; /* Default bcn_li_dtim in resume mode is 0 */
 #ifndef ENABLE_FW_ROAM_SUSPEND
-	uint roamvar = 1;
+	roamvar = 1;
 #endif /* ENABLE_FW_ROAM_SUSPEND */
-	uint nd_ra_filter = 0;
-	int ret = 0;
+	nd_ra_filter = 0;
+	ret = 0;
 
 	if (!dhd)
 		return -ENODEV;

@@ -890,15 +890,6 @@ config NR_CPUS
 	  This is purely to save memory - each supported CPU adds
 	  approximately eight kilobytes to the kernel image.
 
-config NR_CPUS_PER_MODULE
-        int "number of cpu cores per module"
-	default "2" if SMP
-	---help---
-	  This allows you to specify the number of cpu cores per module in the system
-	  on which this kernel will be run.
-
-	  This is used for module level frequency scaling on systems that support it.
-
 config SCHED_SMT
 	bool "SMT (Hyperthreading) scheduler support"
 	depends on X86_HT
