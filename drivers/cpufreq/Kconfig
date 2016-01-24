@@ -89,7 +89,7 @@ config CPU_FREQ_DEFAULT_GOV_LAGFREE
           driver. Fallback governor will be the performance governor.
 
 config CPU_FREQ_DEFAULT_GOV_BIOSHOCK
-	bool "bioShock"
+	bool "BioShock"
 	select CPU_FREQ_GOV_BIOSHOCK
 	help
 	  Default governor of BioShock kernel
@@ -105,7 +105,17 @@ config CPU_FREQ_DEFAULT_GOV_WHEATLEY
 	select CPU_FREQ_GOV_WHEATLEY
 	select CPU_FREQ_GOV_PERFORMANCE
 	---help---
-	  Use the CPUFreq governor 'wheatley' as default.
+	  Use the CPUFreq governor 'wheatley' as default.!
+
+config CPU_FREQ_DEFAULT_GOV_YANKACTIVE
+	bool "yankactive"
+	select CPU_FREQ_GOV_YANKACTIVE
+	help
+	'yankactive' - This driver adds a dynamic cpufreq policy governor
+	designed for latency-sensitive workloads.
+	The governor is based on interactive with just different default settings
+	and can be achieved using interactive with a script. This is added for
+	simplification purposes for myself.
 
 config CPU_FREQ_DEFAULT_GOV_PERFORMANCE
 	bool "performance"
@@ -166,16 +176,6 @@ config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 	  loading your cpufreq low-level hardware driver, using the
 	  'interactive' governor for latency-sensitive workloads.
 
-
-config CPU_FREQ_DEFAULT_GOV_INTERACTIVEX
-	bool "interactiveX"
-	select CPU_FREQ_GOV_INTERACTIVEX
-	help
-	  Use the CPUFreq governor 'interactive' as default. This allows
-	  you to get a full dynamic cpu frequency capable system by simply
-	  loading your cpufreq low-level hardware driver, using the
-	  'interactive' governor for latency-sensitive workloads.
-
 config CPU_FREQ_DEFAULT_GOV_INTEL
 	bool "intel"
 	select CPU_FREQ_GOV_INTEL
@@ -228,12 +228,22 @@ config CPU_FREQ_GOV_BIOSHOCK
 config CPU_FREQ_GOV_LIONHEART
 	tristate "'lionheart' cpufreq governor"
 	depends on CPU_FREQ
+	default y
 	help
 	lionheart' - a "smart" optimized governor!
 
 config CPU_FREQ_GOV_WHEATLEY
 	   tristate "'wheatley' cpufreq governor"
 	   depends on CPU_FREQ
+
+config CPU_FREQ_GOV_YANKACTIVE
+	  tristate "'yankactive' cpufreq policy governor"
+	  help
+	  'yankactive' - This driver adds a dynamic cpufreq policy governor
+	  designed for latency-sensitive workloads.
+	  The governor is based on interactive with just different default settings
+	  and can be achieved using interactive with a script. This is added for
+	  simplification purposes for myself.
 
 config CPU_FREQ_GOV_PERFORMANCE
 	tristate "'performance' governor"
@@ -307,24 +317,6 @@ config CPU_FREQ_GOV_INTERACTIVE
 	  For details, take a look at linux/Documentation/cpu-freq.
 
 	  If in doubt, say N.
-
-config CPU_FREQ_GOV_INTERACTIVEX
-	tristate "'interactiveX' cpufreq policy governor"
-	help
-	  'interactive' - This driver adds a dynamic cpufreq policy governor
-	  designed for latency-sensitive workloads.
-
-	  This governor attempts to reduce the latency of clock
-	  increases so that the system is more responsive to
-	  interactive workloads.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called cpufreq_interactive.
-
-	  For details, take a look at linux/Documentation/cpu-freq.
-
-	  If in doubt, say N.
-
 
 config CPU_FREQ_GOV_INTEL
 	tristate "'intel' cpufreq policy governor"

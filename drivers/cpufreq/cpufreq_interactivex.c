@@ -69,7 +69,7 @@ static struct mutex set_speed_lock;
 // used for suspend code
 static unsigned int enabled = 0;
 static unsigned int registration = 0;
-static unsigned int suspendfreq = 666000;
+static unsigned int suspendfreq = 648000;
 
 /* Hi speed to bump to from lo speed when load burst (default max) */
 static u64 hispeed_freq;
@@ -544,7 +544,7 @@ static struct attribute *interactivex_attributes[] = {
 
 static struct attribute_group interactivex_attr_group = {
 	.attrs = interactivex_attributes,
-	.name = "interactiveX",
+	.name = "interactivex",
 };
 
 static void __cpuinit interactivex_suspend(int suspend)
@@ -556,7 +556,7 @@ static void __cpuinit interactivex_suspend(int suspend)
         if (!enabled) return;
 	  if (!suspend) { 
 		mutex_lock(&set_speed_lock);
-		if (num_online_cpus() < 1) cpu_up(1);
+		if (num_online_cpus() < 2) cpu_up(1);
 		for_each_cpu(cpu, &tmp_mask) {
 		  pcpu = &per_cpu(cpuinfo, cpu);
 		  smp_rmb();

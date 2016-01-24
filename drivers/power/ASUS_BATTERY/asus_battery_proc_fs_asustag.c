@@ -125,26 +125,26 @@ ssize_t asus_battery_profile_read(struct file *filp, char __user *buffer, size_t
 
 int asus_battery_register_proc_fs_test(void)
 {
+	static struct file_operations asus_battery_info_fop = {
+		.read = asus_battery_info_proc_read,
+		//.write = asus_battery_info_proc_write,
+	};
+
+	static struct file_operations asus_battery_profile_fop = {
+	    	.read = asus_battery_profile_read,
+	};
+	
 	struct battery_info_reply tmp_batt_info;
 	struct proc_dir_entry *entry=NULL;
 
         mutex_lock(&batt_info_mutex);
         tmp_batt_info = batt_info;
         mutex_unlock(&batt_info_mutex);
-
-	static struct file_operations asus_battery_info_fop = {
-		.read = asus_battery_info_proc_read,
-		//.write = asus_battery_info_proc_write,
-	};
 	entry = proc_create("asus_battery_info", 0666,NULL, &asus_battery_info_fop);
 	if(!entry)
 	{
 		BAT_DBG_E("create /proc/asus_battery_info fail\n");
 	}
-
-	static struct file_operations asus_battery_profile_fop = {
-	    	.read = asus_battery_profile_read,
-	};
 	entry = proc_create(PROCFS_BATTERY, 0666,NULL, &asus_battery_profile_fop);
 	if(!entry)
 	{

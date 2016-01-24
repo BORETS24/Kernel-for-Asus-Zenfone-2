@@ -985,7 +985,7 @@ static int otm1284a_vid_set_brightness(struct mdfld_dsi_config *dsi_config,
 #else
 //	/* Re-assign the minimum brightness value to 15 */
 //	if (level > 0 && level <= 1)
-		level = 1;
+//		level = 1;
 //
 	reg_level = ~level & 0xFF;
 	pwmctrl.part.pwmswupdate = 0x1;

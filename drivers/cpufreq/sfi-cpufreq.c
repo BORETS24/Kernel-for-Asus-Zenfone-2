@@ -155,7 +155,7 @@ sfi_cpufreq_array[sfi_cpufreq_num-4].freq_mhz - 84; //416MHz
 	pr->performance->states[sfi_cpufreq_num-2].core_frequency = sfi_cpufreq_array[sfi_cpufreq_num-4].freq_mhz - 83 - 84; //333MHz
 	pr->performance->states[sfi_cpufreq_num-2].transition_latency = sfi_cpufreq_array[sfi_cpufreq_num-4].latency;
 	pr->performance->states[sfi_cpufreq_num-2].control = sfi_cpufreq_array[sfi_cpufreq_num-4].ctrl_val - 0x101 - 0x101;
-	pr->performance->states[sfi_cpufreq_num-1].core_frequency = sfi_cpufreq_array[sfi_cpufreq_num-4].freq_mhz - 83 - 83 - 84; //250MHz
+	pr->performance->states[sfi_cpufreq_num-1].core_frequency = sfi_cpufreq_array[sfi_cpufreq_num-4].freq_mhz - 83 - 83 - 68; //266MHz
 	pr->performance->states[sfi_cpufreq_num-1].transition_latency = sfi_cpufreq_array[sfi_cpufreq_num-4].latency;
 	pr->performance->states[sfi_cpufreq_num-1].control = sfi_cpufreq_array[sfi_cpufreq_num-4].ctrl_val - 0x101 - 0x101 - 0x101;
 //	pr->performance->states[sfi_cpufreq_num-1].core_frequency = sfi_cpufreq_array[sfi_cpufreq_num-5].freq_mhz - 83 - 83 - 84 - 84; //166MHz
@@ -226,17 +226,20 @@ static unsigned extract_freq(u32 msr, struct sfi_cpufreq_data *data)
 	int i;
 	struct sfi_processor_performance *perf;
 	u32 sfi_ctrl;
-
+	unsigned int lowest_freq;
 	msr &= INTEL_MSR_BUSRATIO_MASK;
 	perf = data->sfi_data;
+	lowest_freq = data->freq_table[0].frequency;
 
 	for (i = 0; data->freq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
 		sfi_ctrl = perf->states[data->freq_table[i].index].control
 			& INTEL_MSR_BUSRATIO_MASK;
+		if (data->freq_table[i].frequency < lowest_freq)
+			lowest_freq = data->freq_table[i].frequency;
 		if (sfi_ctrl == msr)
 			return data->freq_table[i].frequency;
 	}
-	return data->freq_table[0].frequency;
+	return lowest_freq;
 }
 
 
