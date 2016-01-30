@@ -58,7 +58,7 @@ static int sfi_cpufreq_num;
 static u32 sfi_cpu_num;
 static bool battlow;
 
-#define UNDERCLOCK
+//#define UNDERCLOCK
 
 #define SFI_FREQ_MAX		32
 #define INTEL_MSR_RANGE		0xffff

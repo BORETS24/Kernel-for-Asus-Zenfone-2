@@ -77,8 +77,8 @@ static struct mutex gov_lock;
 #define DEFAULT_TARGET_LOAD 90
 static unsigned int default_target_loads[] = {DEFAULT_TARGET_LOAD};
 
-#define DEFAULT_TIMER_RATE (15 * USEC_PER_MSEC)
-#define DEFAULT_ABOVE_HISPEED_DELAY DEFAULT_TIMER_RATE + 20000
+#define DEFAULT_TIMER_RATE (20 * USEC_PER_MSEC)
+#define DEFAULT_ABOVE_HISPEED_DELAY DEFAULT_TIMER_RATE + 5000
 static unsigned int default_above_hispeed_delay[] = {
 	DEFAULT_ABOVE_HISPEED_DELAY };
 
@@ -901,7 +901,7 @@ static ssize_t show_target_loads(
 		ret += sprintf(buf + ret, "%u%s", tunables->target_loads[i],
 			       i & 0x1 ? ":" : " ");
 
-	ret += sprintf(buf + --ret, "\n");
+	sprintf(buf + ret - 1, "\n");
 	spin_unlock_irqrestore(&tunables->target_loads_lock, flags);
 	return ret;
 }
@@ -941,7 +941,7 @@ static ssize_t show_above_hispeed_delay(
 			       tunables->above_hispeed_delay[i],
 			       i & 0x1 ? ":" : " ");
 
-	ret += sprintf(buf + --ret, "\n");
+	sprintf(buf + ret - 1, "\n");
 	spin_unlock_irqrestore(&tunables->above_hispeed_delay_lock, flags);
 	return ret;
 }
@@ -1603,7 +1603,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			tunables->hispeed_freq = 1666000;
 
 		if (!tunables->touchboost_freq)
-			tunables->touchboost_freq = policy->max;
+			tunables->touchboost_freq = 1333000;
 		for_each_cpu(j, policy->cpus) {
 			pcpu = &per_cpu(cpuinfo, j);
 			pcpu->policy = policy;
