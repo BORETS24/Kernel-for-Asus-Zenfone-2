@@ -18,7 +18,7 @@ export VER=v$1
 echo "Setting Extra Version"
 export EV=EXTRAVERSION=_CustomK_v$1
 echo "Setting Defconfig"
-export DEFCONFIG=cyanogenmod_zenfone2_defconfig
+export DEFCONFIG=x86_64_moor_defconfig
 echo "Setting bzImage Location For CustomK kernel By BORETS24 Of XDA (thanks to eoghan2t7)"
 export BZIMAGE=arch/x86/boot/bzImage
 echo "Enabling Graphite Optimizations"
