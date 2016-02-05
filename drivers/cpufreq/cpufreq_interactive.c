@@ -114,10 +114,10 @@ static void __cpuinit early_suspend_offline_cpus(struct early_suspend *h)
 	unsigned int cpu;
 	for_each_possible_cpu(cpu)
 	{
-		if (cpu<1) //begin offline work at core 2
+		if (cpu<2) //begin offline work at core 2
 			continue;
 		
-		if (cpu_online(cpu) && num_online_cpus() > 1) //get 3 cores down, cores 2, 3 and 4 
+		if (cpu_online(cpu) && num_online_cpus() > 2) //get 3 cores down, cores 2, 3 and 4 
 			cpu_down(cpu);
 	}
 	
