@@ -206,6 +206,8 @@ config CPU_FREQ_DEFAULT_GOV_INTEL
 	  'intel' governor for better perfromance and power with Intel
 	  mobile platforms.
 
+
+
 endchoice
 
 config CPU_FREQ_GOV_CONSERVATIVEX
@@ -374,6 +376,12 @@ config CPU_FREQ_GOV_HYBRID
 	  For details, take a look at linux/Documentation/cpu-freq.
 
 	  If in doubt, say N.
+
+config CPU_FREQ_GOV_SMARTASS2
+	tristate "SmartAssV2"
+
+config CPU_FREQ_GOV_SMARTASSH3
+	tristate "SmartAssH3"
 
 
 config CPU_FREQ_GOV_INTEL
