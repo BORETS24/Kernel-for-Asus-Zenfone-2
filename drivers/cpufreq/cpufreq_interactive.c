@@ -1418,16 +1418,16 @@ gov_sys_pol_attr_rw(iowait_load_threshold);
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 
 static struct global_attr boostpulse_gov_sys =
-	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_sys);
+	__ATTR(boostpulse, 0222, NULL, store_boostpulse_gov_sys);
 
 static struct freq_attr boostpulse_gov_pol =
-	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_pol);
+	__ATTR(boostpulse, 0222, NULL, store_boostpulse_gov_pol);
 
 static struct global_attr touchboostpulse_gov_sys =
-	__ATTR(touchboostpulse, 0644, NULL, store_touchboostpulse_gov_sys);
+	__ATTR(touchboostpulse, 0222, NULL, store_touchboostpulse_gov_sys);
 
 static struct freq_attr touchboostpulse_gov_pol =
-	__ATTR(touchboostpulse, 0644, NULL, store_touchboostpulse_gov_pol);
+	__ATTR(touchboostpulse, 0222, NULL, store_touchboostpulse_gov_pol);
 
 /* One Governor instance for entire system */
 static struct attribute *interactive_attributes_gov_sys[] = {
