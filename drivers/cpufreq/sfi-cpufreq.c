@@ -59,6 +59,7 @@ static u32 sfi_cpu_num;
 static bool battlow;
 
 
+
 #define SFI_FREQ_MAX		32
 #define INTEL_MSR_RANGE		0xffff
 #define INTEL_MSR_BUSRATIO_MASK	0xff00
@@ -121,6 +122,7 @@ static int sfi_processor_get_performance_states(struct sfi_processor *pr)
 	printk(KERN_INFO "Num p-states %d\n", sfi_cpufreq_num);
 
 
+
 	/* Populate the P-states info from the SFI table here */
 	for (i = 0; i < sfi_cpufreq_num; i++) {
 		pr->performance->states[i].core_frequency =
@@ -140,7 +142,6 @@ static int sfi_processor_get_performance_states(struct sfi_processor *pr)
 
 	return result;
 }
-
 static int sfi_processor_register_performance(struct sfi_processor_performance
 				    *performance, unsigned int cpu)
 {
@@ -521,6 +522,19 @@ static struct cpufreq_driver sfi_cpufreq_driver = {
 	.owner = THIS_MODULE,
 	.attr = sfi_cpufreq_attr,
 };
+
+/**
+ * set_battlow_status - enables "battlow" to cap the max scaling cpu frequency.
+ */
+static int __init set_battlow_status(char *unused)
+{
+	pr_notice("Low Battery detected! Frequency shall be capped.\n");
+	battlow = true;
+	return 0;
+}
+/* Checking "battlow" param on boot, whether battery is critically low or not */
+early_param("battlow", set_battlow_status);
+
 
 static int __init parse_cpus(struct sfi_table_header *table)
 {

@@ -158,6 +158,7 @@ struct ftxxxx_platform_data ftxxxx_pdata = {
 	.screen_max_y = TOUCH_MAX_Y,
 };
 
+struct ftxxxx_ts_data *check_ts;
 //#define TOUCH_MAX_X						0x700
 //#define TOUCH_MAX_Y						0x400
 
@@ -411,9 +412,8 @@ static int fts_read_Gesturedata(struct ftxxxx_ts_data *data)
 	unsigned char buf[FTS_GESTURE_POINTS * 3] = { 0 };
 	int ret = -1;
 	int i = 0;
-	int gesture_id;
 	buf[0] = 0xd3;
-	gesture_id = 0;
+	int gesture_id = 0;
 
 	pointnum = 0;
 
@@ -927,7 +927,7 @@ static void fts_un_init_gpio_hw(struct ftxxxx_ts_data *ftxxxx_ts)
 static ssize_t virtual_keys_show(struct kobject *kobj,  
              struct kobj_attribute *attr, char *buf)  
 {
-	if (Read_HW_ID() == HW_ID_MP)
+	if (Read_HW_ID() == HW_ID_MP || (Read_PROJ_ID() == PROJ_ID_ZX550ML && Read_HW_ID() == HW_ID_MP_SD))
 	{
 		if (Read_PROJ_ID() == PROJ_ID_ZE550ML)
 		{
@@ -1120,7 +1120,9 @@ static ssize_t tp_proximity_proc_write(struct file *file, const char __user *buf
 
 	if ((int)(str[0]) == (1+48)) {		//No Touch
 		touch_proximity_at_phone = 1;
-		printk("[ftxxxx] Disable Touch\n");
+		msleep(50);
+		ftxxxx_free_fingers(check_ts);
+		printk("[ftxxxx] Disable Touch & release pointer\n");
 	} else {				//Touch
 		touch_proximity_at_phone = 0;
 		printk("[ftxxxx] Enable Touch\n");
@@ -1426,7 +1428,11 @@ static int ftxxxx_ts_probe(struct i2c_client *client, const struct i2c_device_id
 		ftxxxx_write_reg(client, 0xe4, 0x3e);
 		ftxxxx_write_reg(client, 0xe5, 0x06);
 	}
-
+	
+	//Jeffery+++
+	//add global variable check_ts for P-sensor checking
+	check_ts = ftxxxx_ts;
+	//Jeffery---
 //<ASUS_Proximity+>
 #ifdef ASUS_TOUCH_PROXIMITY_NODE
 	tp_proximity_proc = proc_create("asus_touch_proximity_status", 0664, NULL, &tp_proximity_proc_fops);

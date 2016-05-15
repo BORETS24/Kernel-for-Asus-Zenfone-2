@@ -1345,14 +1345,6 @@ static DECLARE_WORK(mce_trigger_work, mce_do_trigger);
  */
 int mce_notify_irq(void)
 {
-int previous_entry;
-unsigned int entry;
-			const int DATA_MAX_LEN = 128;
-			char data0[DATA_MAX_LEN];
-			char data1[DATA_MAX_LEN];
-			char data2[DATA_MAX_LEN];
-			char data3[DATA_MAX_LEN];
-			char data4[DATA_MAX_LEN];
 	/* Not more than two messages every minute */
 	static DEFINE_RATELIMIT_STATE(ratelimit, 60*HZ, 2);
 
@@ -1366,9 +1358,9 @@ unsigned int entry;
 		if (!__ratelimit(&ratelimit))
 			return 1;
 
-		previous_entry = mcelog_kct_last_entry;
+		int previous_entry = mcelog_kct_last_entry;
 		mcelog_kct_last_entry = 0;
-		entry =
+		unsigned int entry =
 		    rcu_dereference_check_mce(mcelog.next);
 
 		/* check for overflow condition. */
@@ -1392,7 +1384,12 @@ unsigned int entry;
 			if (!mcelog.entry[++previous_entry].finished)
 				continue;
 
-			
+			const int DATA_MAX_LEN = 128;
+			char data0[DATA_MAX_LEN];
+			char data1[DATA_MAX_LEN];
+			char data2[DATA_MAX_LEN];
+			char data3[DATA_MAX_LEN];
+			char data4[DATA_MAX_LEN];
 
 			snprintf(data0, DATA_MAX_LEN,
 				 "status: 0x%llx, misc: 0x%llx, addr: 0x%llx, mcgstatus: 0x%llx",

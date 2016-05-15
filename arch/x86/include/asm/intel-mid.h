@@ -49,7 +49,8 @@ extern int Read_HW_ID(void);
 extern int Read_PCB_ID(void);
 extern int Read_TP_ID(void);
 extern int Read_LCD_ID(void);
-
+extern int Get_Camera_Status(void);
+extern void Set_Camera_Status(int status);
 
 /* OEMB table */
 struct sfi_table_oemb {

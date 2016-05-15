@@ -33,13 +33,12 @@
 #include <linux/tick.h>
 #include <linux/timer.h>
 #include <linux/workqueue.h>
+#include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <asm/cputime.h>
 #include <linux/earlysuspend.h>
 
-#define cputime64_sub(__a, __b)         ((__a) - (__b))
-void (*pm_idle)(void);
-
+//#define cputime64_sub(__a, __b) ((__a) - (__b))
 
 /******************** Tunable parameters: ********************/
 
@@ -48,7 +47,7 @@ void (*pm_idle)(void);
  * towards the ideal frequency and slower after it has passed it. Similarly,
  * lowering the frequency towards the ideal frequency is faster than below it.
  */
-#define DEFAULT_AWAKE_IDEAL_FREQ 833000
+#define DEFAULT_AWAKE_IDEAL_FREQ 1083000
 static unsigned int awake_ideal_freq;
 
 /*
@@ -79,13 +78,13 @@ static unsigned int ramp_down_step;
 /*
  * CPU freq will be increased if measured load > max_cpu_load;
  */
-#define DEFAULT_MAX_CPU_LOAD 85
+#define DEFAULT_MAX_CPU_LOAD 50
 static unsigned long max_cpu_load;
 
 /*
  * CPU freq will be decreased if measured load < min_cpu_load;
  */
-#define DEFAULT_MIN_CPU_LOAD 65
+#define DEFAULT_MIN_CPU_LOAD 25
 static unsigned long min_cpu_load;
 
 /*
@@ -99,14 +98,14 @@ static unsigned long up_rate_us;
  * The minimum amount of time to spend at a frequency before we can ramp down.
  * Notice we ignore this when we are above the ideal frequency.
  */
-#define DEFAULT_DOWN_RATE_US 49000;
+#define DEFAULT_DOWN_RATE_US 48000;
 static unsigned long down_rate_us;
 
 /*
  * The frequency to set when waking up from sleep.
  * When sleep_ideal_freq=0 this will have no effect.
  */
-#define DEFAULT_SLEEP_WAKEUP_FREQ 1000000
+#define DEFAULT_SLEEP_WAKEUP_FREQ 1083000
 static unsigned int sleep_wakeup_freq;
 
 /*
@@ -132,7 +131,7 @@ static u64 boost_pulse_time;
 
 /*************** End of tunables ***************/
 
-
+static void (*pm_idle)(void);
 static void (*pm_idle_old)(void);
 static atomic_t active_count = ATOMIC_INIT(0);
 
@@ -153,9 +152,9 @@ struct smartass_info_s {
 static DEFINE_PER_CPU(struct smartass_info_s, smartass_info);
 
 /* Workqueues handle frequency scaling */
-static struct workqueue_struct *up_task;
+static struct workqueue_struct *up_wq;
 static struct workqueue_struct *down_wq;
-static struct work_struct freq_scale_down_work;
+static struct work_struct freq_scale_work;
 
 static cpumask_t work_cpumask;
 static spinlock_t cpumask_lock;
@@ -186,7 +185,7 @@ static
 struct cpufreq_governor cpufreq_gov_smartass_h3 = {
 	.name = "SmartassH3",
 	.governor = cpufreq_governor_smartass_h3,
-	.max_transition_latency = 10000000,
+	.max_transition_latency = 9000000,
 	.owner = THIS_MODULE,
 };
 
@@ -341,7 +340,7 @@ static void cpufreq_smartass_timer(unsigned long cpu)
 				old_freq,cpu_load,delta_idle);
 			this_smartass->ramp_dir = 1;
 			work_cpumask_set(cpu);
-			queue_work(up_task, &freq_scale_down_work);
+			queue_work(up_wq, &freq_scale_work);
 			queued_work = 1;
 		}
 		else this_smartass->ramp_dir = 0;
@@ -356,7 +355,7 @@ static void cpufreq_smartass_timer(unsigned long cpu)
 			old_freq,cpu_load,delta_idle);
 		this_smartass->ramp_dir = -1;
 		work_cpumask_set(cpu);
-		queue_work(down_wq, &freq_scale_down_work);
+		queue_work(down_wq, &freq_scale_work);
 		queued_work = 1;
 	}
 	else this_smartass->ramp_dir = 0;
@@ -837,7 +836,7 @@ static int cpufreq_governor_smartass_h3(struct cpufreq_policy *new_policy,
 		this_smartass->enable = 0;
 		smp_wmb();
 		del_timer(&this_smartass->timer);
-		flush_work(&freq_scale_down_work);
+		flush_work(&freq_scale_work);
 		this_smartass->idle_exit_time = 0;
 
 		if (atomic_dec_return(&active_count) <= 1) {
@@ -883,15 +882,21 @@ static void smartass_suspend(int cpu, int suspend)
 }
 
 static void smartass_early_suspend(struct early_suspend *handler) {
+	int i;
 	if (suspended || sleep_ideal_freq==0) // disable behavior for sleep_ideal_freq==0
 		return;
 	suspended = 1;
+	for_each_online_cpu(i)
+		smartass_suspend(i,1);
 }
 
 static void smartass_late_resume(struct early_suspend *handler) {
+	int i;
 	if (!suspended) // already not suspended so nothing to do
 		return;
 	suspended = 0;
+	for_each_online_cpu(i)
+		smartass_suspend(i,0);
 }
 
 static struct early_suspend smartass_power_suspend = {
@@ -941,12 +946,12 @@ static int __init cpufreq_smartass_init(void)
 	}
 
 	// Scale up is high priority
-	up_task = create_workqueue("ksmartass_up");
-	down_wq = create_workqueue("ksmartass_down");
-	if (!up_task || !down_wq)
+	up_wq = alloc_workqueue("ksmartass_up", WQ_HIGHPRI, 1);
+	down_wq = alloc_workqueue("ksmartass_down", 0, 1);
+	if (!up_wq || !down_wq)
 		return -ENOMEM;
 
-	INIT_WORK(&freq_scale_down_work, cpufreq_smartass_freq_change_time_work);
+	INIT_WORK(&freq_scale_work, cpufreq_smartass_freq_change_time_work);
 
 	register_early_suspend(&smartass_power_suspend);
 
@@ -962,12 +967,14 @@ module_init(cpufreq_smartass_init);
 static void __exit cpufreq_smartass_exit(void)
 {
 	cpufreq_unregister_governor(&cpufreq_gov_smartass_h3);
-	destroy_workqueue(up_task);
+	destroy_workqueue(up_wq);
 	destroy_workqueue(down_wq);
 }
 
 module_exit(cpufreq_smartass_exit);
 
-/*MODULE_AUTHOR ("Erasmux, moded by H3ROS & C3C0");
+MODULE_AUTHOR ("Erasmux, moded by H3ROS & C3C0");
 MODULE_DESCRIPTION ("'cpufreq_smartassH3' - A smart cpufreq governor");
-MODULE_LICENSE ("GPL");*/
+MODULE_LICENSE ("GPL");
+
+

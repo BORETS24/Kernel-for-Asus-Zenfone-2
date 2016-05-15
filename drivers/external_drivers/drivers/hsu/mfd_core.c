@@ -1498,6 +1498,10 @@ serial_hsu_set_termios(struct uart_port *port, struct ktermios *termios,
 			fcr = UART_FCR_ENABLE_FIFO | UART_FCR_HSU_64_32B;
 
 		fcr |= UART_FCR_HSU_64B_FIFO;
+
+                if (!(termios->c_cflag & CRTSCTS))
+                        fcr = UART_FCR_ENABLE_FIFO | UART_FCR_HSU_64_1B | UART_FCR_HSU_64B_FIFO;
+
 	} else {
 		/* need calc quot here */
 		switch (baud) {

@@ -646,7 +646,8 @@ static void pvr_sync_release_timeline(struct sync_timeline *psObj)
 static void pvr_sync_print_obj(struct seq_file *s,
 			       struct sync_timeline *sync_timeline)
 {
-	struct pvr_sync_timeline *timeline =
+        return;
+/*	struct pvr_sync_timeline *timeline =
 	    (struct pvr_sync_timeline *)sync_timeline;
 
 	if(!timeline && !timeline->timeline_sync)
@@ -656,7 +657,7 @@ static void pvr_sync_print_obj(struct seq_file *s,
 			   timeline->timeline_sync->id,
 			   timeline->timeline_sync->vaddr,
 			   get_sync_value(timeline->timeline_sync),
-			   timeline->timeline_sync->next_value);
+			   timeline->timeline_sync->next_value); */
 }
 
 static void pvr_sync_print_pt(struct seq_file *s, struct sync_pt *sync_pt)

@@ -32,7 +32,7 @@
 #include <linux/slab.h>
 #include <linux/kernel_stat.h>
 #include <asm/cputime.h>
-
+#include <linux/earlysuspend.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/cpufreq_interactive.h>
@@ -75,7 +75,7 @@ static struct mutex gov_lock;
 static unsigned int default_target_loads[] = {DEFAULT_TARGET_LOAD};
 
 #define DEFAULT_TIMER_RATE (20 * USEC_PER_MSEC)
-#define DEFAULT_ABOVE_HISPEED_DELAY DEFAULT_TIMER_RATE + 3000
+#define DEFAULT_ABOVE_HISPEED_DELAY DEFAULT_TIMER_RATE
 static unsigned int default_above_hispeed_delay[] = {
 	DEFAULT_ABOVE_HISPEED_DELAY };
 
@@ -85,13 +85,98 @@ static int __init bootboost(char *str)
 	return 1;
 }
 
-/* Max Boost Time: 10 sec */
-#define DEFAULT_MAX_BOOST_MS 10000
+struct cpufreq_interactive_tunables {
+	int usage_count;
+	/* Hi speed to bump to from lo speed when load burst (default max) */
+	unsigned int hispeed_freq;
+	/*
+	 * Frequency to which a touch boost takes the cpus to
+	 */
+	unsigned long touchboost_freq;
+	/* Go to hi speed when CPU load at or above this value. */
+#define DEFAULT_GO_HISPEED_LOAD 99
+	unsigned long go_hispeed_load;
+	/* Target load. Lower values result in higher CPU speeds. */
+	spinlock_t target_loads_lock;
+	unsigned int *target_loads;
+	int ntarget_loads;
+	/*
+	 * The minimum amount of time to spend at a frequency before we can ramp
+	 * down.
+	 */
+#define DEFAULT_MIN_SAMPLE_TIME (80 * USEC_PER_MSEC)
+	unsigned long min_sample_time;
+	/*
+	 * The sample rate of the timer used to increase frequency
+	 */
+	unsigned long timer_rate;
+	/*
+	 * Wait this long before raising speed above hispeed, by default a
+	 * single timer interval.
+	 */
+	spinlock_t above_hispeed_delay_lock;
+	unsigned int *above_hispeed_delay;
+	int nabove_hispeed_delay;
+	/* Non-zero means indefinite speed boost active */
+	int boost_val;
+	/* Duration of a boot pulse in usecs */
+	int boostpulse_duration_val;
+	/* End time of boost pulse in ktime converted to usecs */
+	u64 boostpulse_endtime;
+	/* Duration of a touchboost pulse in usecs */
+	int touchboostpulse_duration_val;
+	/* End time of touchboost pulse in ktime converted to usecs */
+	u64 touchboostpulse_endtime;
+	/*
+	 * Max additional time to wait in idle, beyond timer_rate, at speeds
+	 * above minimum before wakeup to reduce speed, or -1 if unnecessary.
+	 */
+#define DEFAULT_TIMER_SLACK (4 * DEFAULT_TIMER_RATE)
+	int timer_slack_val;
+	bool io_is_busy;
+#ifdef CONFIG_IRQ_TIME_ACCOUNTING
+#define DEFAULT_IRQ_LOAD_THRESHOLD 5
+#define DEFAULT_IOWAIT_LOAD_THRESHOLD 15
+	bool io_busy;
+	unsigned int io_busy_mask;
+	unsigned int irq_load_threshold_val;
+	unsigned int iowait_load_threshold_val;
+#endif /* CONFIG_IRQ_TIME_ACCOUNTING */
+};
 
 /* For cases where we have single governor instance for system */
 struct cpufreq_interactive_tunables *common_tunables;
 
 static struct attribute_group *get_sysfs_attr(void);
+
+static void off_early_suspend(struct early_suspend *h) {
+	unsigned int cpu;
+
+	/* unplug online cpu cores */
+		for_each_present_cpu(cpu)
+			if (cpu && cpu_online(cpu))
+				cpu_down(2);
+				cpu_down(3);
+
+	
+	pr_info("suspended\n");
+}
+
+static void __cpuinit off_late_resume(struct early_suspend *h) {
+	unsigned int cpu;
+
+		for_each_present_cpu(cpu)
+			if (!cpu_online(cpu))
+				cpu_up(cpu);
+	
+	pr_info("resumed\n");
+}
+
+static struct early_suspend __refdata off_early_suspend_handler = {
+	.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN,
+	.suspend = off_early_suspend,
+	.resume = off_late_resume,
+};
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 DECLARE_PER_CPU(u64, cpu_hardirq_time);
@@ -106,7 +191,6 @@ static inline u64 irq_time_read(int cpu)
 	return irq_time;
 }
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
-
 
 static inline cputime64_t get_cpu_idle_time_jiffy(unsigned int cpu,
 						  cputime64_t *wall)
@@ -869,7 +953,7 @@ static ssize_t show_target_loads(
 		ret += sprintf(buf + ret, "%u%s", tunables->target_loads[i],
 			       i & 0x1 ? ":" : " ");
 
-	sprintf(buf + ret - 1, "\n");
+	ret += sprintf(buf + --ret, "\n");
 	spin_unlock_irqrestore(&tunables->target_loads_lock, flags);
 	return ret;
 }
@@ -909,7 +993,7 @@ static ssize_t show_above_hispeed_delay(
 			       tunables->above_hispeed_delay[i],
 			       i & 0x1 ? ":" : " ");
 
-	sprintf(buf + ret - 1, "\n");
+	ret += sprintf(buf + --ret, "\n");
 	spin_unlock_irqrestore(&tunables->above_hispeed_delay_lock, flags);
 	return ret;
 }
@@ -1069,17 +1153,12 @@ static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
 
 	tunables->boost_val = val;
 
-	if(tunables->boost_val > 100) {
-		if(tunables->boost_val > DEFAULT_MAX_BOOST_MS) {
-			tunables->boost_val = DEFAULT_MAX_BOOST_MS;
-		}
-		tunables->boostpulse_endtime = ktime_to_us(ktime_get()) + tunables->boost_val*1000;
-		trace_cpufreq_interactive_boost("pulse");
-		cpufreq_interactive_boost();
-		tunables->boost_val = 0;
-	}
-
-	if (tunables->boost_val) {
+	if (tunables->boost_val == 2) {
+		tunables->boostpulse_endtime = ktime_to_us(ktime_get()) + 5000000;
+                trace_cpufreq_interactive_boost("pulse");
+                cpufreq_interactive_boost();
+                tunables->boost_val = 0;
+	} else if (tunables->boost_val) {
 		trace_cpufreq_interactive_boost("on");
 		cpufreq_interactive_boost();
 	} else {
@@ -1091,17 +1170,13 @@ static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
 
 void set_cpufreq_boost(unsigned long val)
 {
-        struct cpufreq_interactive_cpuinfo *pcpu = &per_cpu(cpuinfo, smp_processor_id());
+        struct cpufreq_interactive_cpuinfo *pcpu =
+		&per_cpu(cpuinfo, raw_smp_processor_id());
+
         struct cpufreq_interactive_tunables *tunables =
-                pcpu->policy->governor_data;
-        set_cpufreq_boost_wifi(tunables, val);
-}
-EXPORT_SYMBOL(set_cpufreq_boost);
+		pcpu->policy->governor_data;
 
-void set_cpufreq_boost_wifi(struct cpufreq_interactive_tunables *tunables, unsigned long val)
-{
         tunables->boost_val = val;
-
         if (tunables->boost_val == 2) {
                 tunables->boostpulse_endtime = ktime_to_us(ktime_get()) + 5000000;
                 trace_cpufreq_interactive_boost("pulse");
@@ -1114,37 +1189,21 @@ void set_cpufreq_boost_wifi(struct cpufreq_interactive_tunables *tunables, unsig
                 trace_cpufreq_interactive_unboost("off");
         }
 
-        return;
+	return;
 }
-
-
+EXPORT_SYMBOL_GPL(set_cpufreq_boost);
 static ssize_t store_boostpulse(struct cpufreq_interactive_tunables *tunables,
 				const char *buf, size_t count)
 {
 	int ret;
 	unsigned long val;
-	u64 new_boostpulse_endtime;
 
 	ret = kstrtoul(buf, 0, &val);
 	if (ret < 0)
 		return ret;
 
-	if(val > 1) {
-		//Max boost time = 20sec
-		if (val > 20)
-			val = 20;
-
-        new_boostpulse_endtime = ktime_to_us(ktime_get()) +
-            val*1000000;
-
-		if( new_boostpulse_endtime > tunables->boostpulse_endtime ) {
-			tunables->boostpulse_endtime = new_boostpulse_endtime;
-		}
-	}
-	else {
-		tunables->boostpulse_endtime = ktime_to_us(ktime_get()) +
-            tunables->boostpulse_duration_val;
-	}
+	tunables->boostpulse_endtime = ktime_to_us(ktime_get()) +
+		tunables->boostpulse_duration_val;
 	trace_cpufreq_interactive_boost("pulse");
 	cpufreq_interactive_boost();
 	return count;
@@ -1365,10 +1424,10 @@ static struct freq_attr boostpulse_gov_pol =
 	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_pol);
 
 static struct global_attr touchboostpulse_gov_sys =
-	__ATTR(touchboostpulse, 0200, NULL, store_touchboostpulse_gov_sys);
+	__ATTR(touchboostpulse, 0644, NULL, store_touchboostpulse_gov_sys);
 
 static struct freq_attr touchboostpulse_gov_pol =
-	__ATTR(touchboostpulse, 0200, NULL, store_touchboostpulse_gov_pol);
+	__ATTR(touchboostpulse, 0644, NULL, store_touchboostpulse_gov_pol);
 
 /* One Governor instance for entire system */
 static struct attribute *interactive_attributes_gov_sys[] = {
@@ -1519,14 +1578,14 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		tunables->timer_rate = DEFAULT_TIMER_RATE;
 		tunables->boostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
 		tunables->touchboostpulse_duration_val =
-				DEFAULT_MIN_SAMPLE_TIME;
+				DEFAULT_MIN_SAMPLE_TIME - 50000;
 		tunables->timer_slack_val = DEFAULT_TIMER_SLACK;
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 		tunables->irq_load_threshold_val = DEFAULT_IRQ_LOAD_THRESHOLD;
 		tunables->iowait_load_threshold_val = DEFAULT_IOWAIT_LOAD_THRESHOLD;
 		tunables->io_busy = 0;
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
-//		if (boot_boost)
+		if (boot_boost)
 //			tunables->boost_val = 1;
 
 		spin_lock_init(&tunables->target_loads_lock);
@@ -1536,7 +1595,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			idle_notifier_register(&cpufreq_interactive_idle_nb);
 			cpufreq_register_notifier(&cpufreq_notifier_block,
 					CPUFREQ_TRANSITION_NOTIFIER);
-			
+		register_early_suspend(&off_early_suspend_handler);
 		}
 
 		policy->governor_data = tunables;
@@ -1551,7 +1610,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 				cpufreq_unregister_notifier(&cpufreq_notifier_block,
 						CPUFREQ_TRANSITION_NOTIFIER);
 				idle_notifier_unregister(&cpufreq_interactive_idle_nb);
-				
+				unregister_early_suspend(&off_early_suspend_handler);
 			}
 
 			sysfs_remove_group(get_governor_parent_kobj(policy),
@@ -1568,10 +1627,10 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 
 		freq_table = cpufreq_frequency_get_table(policy->cpu);
 		if (!tunables->hispeed_freq)
-			tunables->hispeed_freq = 1750000;
+			tunables->hispeed_freq = policy->max;
 
 		if (!tunables->touchboost_freq)
-			tunables->touchboost_freq = 1750000;
+			tunables->touchboost_freq = policy->max;
 		for_each_cpu(j, policy->cpus) {
 			pcpu = &per_cpu(cpuinfo, j);
 			pcpu->policy = policy;

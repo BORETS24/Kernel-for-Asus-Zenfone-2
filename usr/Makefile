@@ -21,6 +21,9 @@ suffix_$(CONFIG_INITRAMFS_COMPRESSION_XZ)     = .xz
 # Lzo
 suffix_$(CONFIG_INITRAMFS_COMPRESSION_LZO)   = .lzo
 
+# Lz4
+suffix_$(CONFIG_INITRAMFS_COMPRESSION_LZO)   = .lz4
+
 AFLAGS_initramfs_data.o += -DINITRAMFS_IMAGE="usr/initramfs_data.cpio$(suffix_y)"
 
 # Generate builtin.o based on initramfs_data.o
@@ -53,7 +56,7 @@ endif
 quiet_cmd_initfs = GEN     $@
       cmd_initfs = $(initramfs) -o $@ $(ramfs-args) $(ramfs-input)
 
-targets := initramfs_data.cpio.gz initramfs_data.cpio.bz2 initramfs_data.cpio.lzma initramfs_data.cpio.xz initramfs_data.cpio.lzo initramfs_data.cpio
+targets := initramfs_data.cpio.gz initramfs_data.cpio.bz2 initramfs_data.cpio.lzma initramfs_data.cpio.xz initramfs_data.cpio.lzo initramfs_data.cpio initramfs_data.cpio.lz4
 # do not try to update files included in initramfs
 $(deps_initramfs): ;
 

@@ -1443,7 +1443,8 @@ made_compressed_probe:
 				usb_sndbulkpipe(usb_dev, epwrite->bEndpointAddress),
 				NULL, acm->writesize, acm_write_bulk, snd);
 		snd->urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
-		snd->instance = acm;
+		snd->urb->transfer_flags |= URB_ZERO_PACKET;
+                snd->instance = acm;
 	}
 	INIT_LIST_HEAD(&acm->delayed_wb_list);
 

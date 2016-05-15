@@ -134,7 +134,7 @@ static struct rt5647_init_reg init_list[] = {
 	{ RT5647_GPIO_CTRL2	, 0x0004 },
 	{ RT5647_GPIO_CTRL4	, 0x0004 },
 #ifdef JD1_FUNC
-	{ RT5647_IRQ_CTRL2	, 0x0200 },
+	{ RT5647_IRQ_CTRL2	, 0x0000 },
 	{ RT5647_A_JD_CTRL1	, 0x0001 },
 	{ RT5647_MICBIAS	, 0x0008 },
 	{ RT5647_GEN_CTRL3	, 0x10c0 },

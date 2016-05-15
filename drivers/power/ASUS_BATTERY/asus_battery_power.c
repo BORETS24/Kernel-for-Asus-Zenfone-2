@@ -69,21 +69,29 @@ enum temperature_type{  //unit: 0.1 degree Celsius
 };
 static int temp_type=IN_200_400;
 static int hvdcp_vbat_flag=0, highchgvol_flag=0, aicl_set_flag=0;
-extern int hvdcp_mode, dcp_mode, early_suspend_flag, set_usbin_cur_flag;
+extern int hvdcp_mode, dcp_mode, early_suspend_flag, set_usbin_cur_flag, chr_suspend_flag;
 static struct switch_dev charger_dev;
 extern int smb1357_chr_suspend(void);
 #endif
 #ifdef THERMAL_CTRL
 static int qc_disable=1, temp_1400=55000, temp_700=60000, temp_0=70000;
+static int temp_usbin_1200=47000, temp_usbin_700=50000, temp_usbin_300=59000;
 long systherm2_temp;
 extern long read_systherm2_temp(void);
-enum systherm2_control_current_block{
+enum systherm2_control_current_block {
 	LIMIT_NONE=0,
 	LIMIT_1400,
 	LIMIT_700,
 	LIMIT_0,
 };
 static int current_type=LIMIT_NONE;
+enum systherm2_control_current_block_zx551ml {
+	LIMIT_NONE_ZX=0,
+	LIMIT_1200_ZX,
+	LIMIT_700_ZX,
+	LIMIT_300_ZX,
+};
+static int current_type_zx=LIMIT_NONE_ZX;
 #endif
 
 #ifdef CONFIG_LEDS_ASUS
@@ -342,7 +350,7 @@ ssize_t init_thermal_disable_qc_read(struct file *filp, char __user *buffer, siz
 	buff = kmalloc(100,GFP_KERNEL);
 	if(!buff)
 		return -ENOMEM;
-	len += sprintf(buff + len, "qc_disable=%d, temp_1400=%d, temp_700=%d, temp_0=%d\n", qc_disable, temp_1400, temp_700, temp_0);
+	len += sprintf(buff + len, "qc_disable=%d, temp_usbin_1200=%d, temp_usbin_700=%d, temp_usbin_300=%d\n", qc_disable, temp_usbin_1200, temp_usbin_700, temp_usbin_300);
 	ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
 	kfree(buff);
 	return ret;
@@ -350,7 +358,7 @@ ssize_t init_thermal_disable_qc_read(struct file *filp, char __user *buffer, siz
 
 ssize_t init_thermal_disable_qc_write(struct file *filp, const char __user *buffer, size_t count, loff_t *ppos)
 {
-	int buf_index=0, temp_index=0, temp_value=1, i=0, temp_1400_tmp=0, temp_700_tmp=0, temp_0_tmp=0;
+	int buf_index=0, temp_index=0, temp_value=1, i=0, temp_usbin_1200_tmp=0, temp_usbin_700_tmp=0, temp_usbin_300_tmp=0;
 
 	BAT_DBG("%s +++\n", __func__);
 	/*handle input string to interger*/
@@ -360,41 +368,41 @@ ssize_t init_thermal_disable_qc_write(struct file *filp, const char __user *buff
 		buf_index++;
 	}
 	buf_index++;
-	/*temp_1400*/
+	/*temp_usbin_1200*/
 	temp_index = 4;
 	while(buffer[buf_index]!=' ') {
 		for(i=0;i<temp_index;i++)
 			temp_value = 10*temp_value;
-		temp_1400_tmp += ((int)buffer[buf_index] - 48)*temp_value;
+		temp_usbin_1200_tmp += ((int)buffer[buf_index] - 48)*temp_value;
 		buf_index++;
 		temp_index--;
 		temp_value = 1;
 	}
 	buf_index++;
-	/*temp_700*/
+	/*temp_usbin_700*/
 	temp_index = 4;
 	while(buffer[buf_index]!=' ') {
 		for(i=0;i<temp_index;i++)
 			temp_value = 10*temp_value;
-		temp_700_tmp += ((int)buffer[buf_index] - 48)*temp_value;
+		temp_usbin_700_tmp += ((int)buffer[buf_index] - 48)*temp_value;
 		buf_index++;
 		temp_index--;
 		temp_value = 1;
 	}
 	buf_index++;
-	/*temp_0*/
+	/*temp_usbin_300*/
 	temp_index = 4;
 	while(buffer[buf_index]!='\n') {
 		for(i=0;i<temp_index;i++)
 			temp_value = 10*temp_value;
-		temp_0_tmp += ((int)buffer[buf_index] - 48)*temp_value;
+		temp_usbin_300_tmp += ((int)buffer[buf_index] - 48)*temp_value;
 		buf_index++;
 		temp_index--;
 		temp_value = 1;
 	}
-	temp_1400 = temp_1400_tmp;
-	temp_700 = temp_700_tmp;
-	temp_0 = temp_0_tmp;
+	temp_usbin_1200 = temp_usbin_1200_tmp;
+	temp_usbin_700 = temp_usbin_700_tmp;
+	temp_usbin_300 = temp_usbin_300_tmp;
 	return count;
 }
 
@@ -711,7 +719,7 @@ static int asus_battery_update_status_no_mutex(int percentage)
 		if((cable_status == USB_ADAPTER)&&(dcp_mode==1)&&(aicl_set_flag==0)) {
 			if(hvdcp_mode==1) {
 				if(Read_PROJ_ID()==PROJ_ID_ZX550ML) {
-					if((smb1357_get_aicl_result()>=0x0b)&&(smb1357_get_aicl_result()<0x12)) {
+					if((smb1357_get_aicl_result()>=0x0b)&&(smb1357_get_aicl_result()<0x12)&&(current_type_zx==LIMIT_NONE_ZX)) {
 						BAT_DBG("HVDCP in and aicl result between 1000~1800mA\n");
 						if(set_usbin_cur_flag==1) {
 							BAT_DBG("setting step current now so ignore!\n");
@@ -734,41 +742,21 @@ static int asus_battery_update_status_no_mutex(int percentage)
 					}
 				}
 			}else {
-				if(Read_PROJ_ID()==PROJ_ID_ZX550ML) {
-					if((smb1357_get_aicl_result()>=0x0b)&&(smb1357_get_aicl_result()<0x10)) {
-						BAT_DBG("DCP in and aicl result between 1000~1500mA\n");
-						if(set_usbin_cur_flag==1) {
-							BAT_DBG("setting step current now so ignore!\n");
-						}else {
-							BAT_DBG("set current again!\n");
-							set_QC_inputI_limit(3);
-							aicl_set_flag = 1;
-						}
-					}else if( (vbat>4300)||(percentage>70) ) {
-						BAT_DBG("DCP in and vbat >4.3V  or soc > 70 \n");
-						if(set_usbin_cur_flag==1) {
-							BAT_DBG("setting step current now so ignore!\n");
-						}else {
-							BAT_DBG("set current again!\n");
-							set_QC_inputI_limit(3);
-							aicl_set_flag = 1;
-						}
-					}
-				}else if(Read_PROJ_ID()==PROJ_ID_ZE551ML_CKD) {
-					if((smb1357_get_aicl_result()>=0x0b)&&(smb1357_get_aicl_result()<0x12)) {
+				if (Read_PROJ_ID()==PROJ_ID_ZE551ML_CKD) {
+					if ((smb1357_get_aicl_result()>=0x0b)&&(smb1357_get_aicl_result()<0x12)) {
 						BAT_DBG("BZ SKU: DCP in and aicl result between 1000~1800mA\n");
-						if(set_usbin_cur_flag==1) {
+						if (set_usbin_cur_flag==1) {
 							BAT_DBG("setting step current now so ignore!\n");
-						}else {
+						} else {
 							BAT_DBG("set current again!\n");
 							set_QC_inputI_limit(3);
 							aicl_set_flag = 1;
 						}
-					}else if(vbat>3800) {
+					}else if (vbat>3800) {
 						BAT_DBG("BZ SKU: DCP in and vbat >3.8V\n");
-						if(set_usbin_cur_flag==1) {
+						if (set_usbin_cur_flag==1) {
 							BAT_DBG("setting step current now so ignore!\n");
-						}else {
+						} else {
 							BAT_DBG("set current again!\n");
 							set_QC_inputI_limit(3);
 							aicl_set_flag = 1;
@@ -1076,7 +1064,7 @@ handle500_600:
 #ifdef THERMAL_CTRL
 #ifdef CONFIG_SMB1357_CHARGER
 		/*for QC thermal shutdown issue, so add monitoring SYSTHERM2 function for ZE550ML/ZE551ML*/
-		if(qc_disable&&hvdcp_mode&&(!early_suspend_flag)&&(Read_PROJ_ID()!=PROJ_ID_ZX550ML)&&(boot_mode==1)) {
+		if(qc_disable&&hvdcp_mode&&(!early_suspend_flag)&&(boot_mode==1)&&(Read_PROJ_ID()!=PROJ_ID_ZX550ML)) {
 			systherm2_temp = read_systherm2_temp();
 			if(systherm2_temp<temp_1400) {
 				if(current_type>=LIMIT_1400 && systherm2_temp>(temp_1400-3000)) {
@@ -1120,6 +1108,46 @@ handle500_600:
 				//goto final;
 			}
 			BAT_DBG("use thermal policy and systherm2_temp=%ld, current_type=%d\n", systherm2_temp, current_type);
+		}
+		/*for QC thermal shutdown issue, so add monitoring SYSTHERM2 function for ZX551ML*/
+		if(qc_disable&&hvdcp_mode&&(boot_mode==1)&&(!chr_suspend_flag)&&(Read_PROJ_ID()==PROJ_ID_ZX550ML)) {
+			systherm2_temp = read_systherm2_temp();
+			if (systherm2_temp<temp_usbin_1200) {
+				if(current_type_zx>=LIMIT_1200_ZX && systherm2_temp>(temp_usbin_1200-2000)) {
+					if (smb1357_get_aicl_result()!=0x0d)
+						set_QC_inputI_limit(2);
+					current_type_zx=LIMIT_1200_ZX;
+				}else {
+					if ((current_type_zx>LIMIT_NONE_ZX)&&(smb1357_get_aicl_result()!=0x15))
+						set_QC_inputI_limit(1);
+					current_type_zx=LIMIT_NONE_ZX;
+				}
+			} else if (systherm2_temp>=temp_usbin_1200 && systherm2_temp<temp_usbin_700) {
+				if(current_type_zx>=LIMIT_700_ZX && systherm2_temp>(temp_usbin_700-2000)) {
+					if (smb1357_get_aicl_result()!=0x08)
+						set_QC_inputI_limit(7);
+					current_type_zx=LIMIT_700_ZX;
+				}else {
+					if (smb1357_get_aicl_result()!=0x0d)
+						set_QC_inputI_limit(2);
+					current_type_zx=LIMIT_1200_ZX;
+				}
+			} else if (systherm2_temp>=temp_usbin_700 && systherm2_temp<temp_usbin_300) {
+				if(current_type_zx>=LIMIT_300_ZX && systherm2_temp>(temp_usbin_300-2000)) {
+					if (smb1357_get_aicl_result()!=0x00)
+						set_QC_inputI_limit(8);
+					current_type_zx = LIMIT_300_ZX;
+				} else {
+					if (smb1357_get_aicl_result()!=0x08)
+						set_QC_inputI_limit(7);
+					current_type_zx=LIMIT_700_ZX;
+				}
+			} else {
+				if (smb1357_get_aicl_result()!=0x00)
+					set_QC_inputI_limit(8);
+				current_type_zx = LIMIT_300_ZX;
+			}
+			BAT_DBG("use thermal policy and systherm2_temp=%ld, current_type_zx=%d\n", systherm2_temp, current_type_zx);
 		}
 #endif
 #endif
@@ -1730,8 +1758,8 @@ int asus_battery_init(
 )
 {
         int ret=0;
-        drv_status_t drv_sts;    
 	uint8_t data;
+        drv_status_t drv_sts;
 
         BAT_DBG("%s, %d, %d, 0x%08X\n", __func__, polling_time, critical_polling_time, test_flag);
 
@@ -1851,10 +1879,8 @@ int asus_battery_init(
 
 	//set PMIC voltage drop warning
 	intel_scu_ipc_iowrite8(VWARN1_CFG_REG, 0xFF);
-	if(Read_PROJ_ID()==PROJ_ID_ZX550ML) {
-		//set PMIC VPROG2 1V8 default on in ZX550ML
-		intel_scu_ipc_iowrite8(VPROG2_CFG_REG, 0x4B);
-	}
+	//set PMIC VPROG2 1V8 default on in ZX550ML
+	intel_scu_ipc_iowrite8(VPROG2_CFG_REG, 0x4B);
 	//set power key pressed for HW shutdown to 8s
 	ret = intel_scu_ipc_ioread8(PBCONFIG_REG, &data);
 	if (ret) {

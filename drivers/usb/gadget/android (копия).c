@@ -1325,7 +1325,6 @@ static struct android_usb_function hid_function = {
 };
 
 static struct android_usb_function *supported_functions[] = {
-	&hid_function,
 	&ffs_function,
 	&pclink_function,
 	&acm_function,
@@ -1337,6 +1336,7 @@ static struct android_usb_function *supported_functions[] = {
 	&audio_source_function,
 	&dvcdfx_function,
 	&dvctrace_function,
+	&hid_function,
 	NULL
 };
 

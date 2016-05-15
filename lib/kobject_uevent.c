@@ -252,7 +252,6 @@ bool not_buffer_uevent(struct kobject *kobj, enum kobject_action action)
 int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 		       char *envp_ext[])
 {
-	struct uevent_buffered *ub;
 	struct kobj_uevent_env *env;
 	const char *action_string = kobject_actions[action];
 	const char *devpath = NULL;
@@ -371,7 +370,8 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 	 */
 	mutex_lock(&uevent_buffer_mutex);
 	if (uevent_buffer && !not_buffer_uevent(kobj, action)) {
-		pr_debug(KERN_INFO "buffer uevent--\n");
+		printk(KERN_INFO "buffer uevent--\n");
+		struct uevent_buffered *ub;
 		ub = kmalloc(sizeof(*ub), GFP_KERNEL);
 		if (!ub) {
 			mutex_unlock(&uevent_buffer_mutex);
@@ -513,13 +513,13 @@ found:
 int uevent_buffer_pm_notify(struct notifier_block *nb,
 			    unsigned long action, void *data)
 {
-	struct uevent_buffered *ub, *tmp;
 	mutex_lock(&uevent_buffer_mutex);
 	if (action == PM_SUSPEND_PREPARE) {
-		pr_debug(KERN_INFO "start buffer uevent--\n");
+		printk(KERN_INFO "start buffer uevent--\n");
 		uevent_buffer = true;
 	} else if (action == PM_POST_SUSPEND) {
-		pr_debug(KERN_INFO "start re-send bufferred uevents--\n");
+		printk(KERN_INFO "start re-send bufferred uevents--\n");
+		struct uevent_buffered *ub, *tmp;
 		list_for_each_entry_safe(ub, tmp, &uevent_buffer_list,
 					 buffer_list) {
 			kobject_deliver_uevent(ub->kobj, ub->env, ub->action,

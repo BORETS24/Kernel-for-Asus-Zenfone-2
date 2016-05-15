@@ -325,6 +325,7 @@ void __blk_run_queue(struct request_queue *q)
 {
 	if (unlikely(blk_queue_stopped(q)))
 		return;
+
 	__blk_run_queue_uncond(q);
 }
 EXPORT_SYMBOL(__blk_run_queue);

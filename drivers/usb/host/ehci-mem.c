@@ -33,6 +33,9 @@
 
 /*-------------------------------------------------------------------------*/
 
+extern void mdm_apcdmp_waiting_coredump_recevied_then_BUG(void);
+extern void mdm_apcdmp_IMC726X_execute(void);
+
 /* Allocate the key transfer structures from the previously allocated pool */
 
 static inline void ehci_qtd_init(struct ehci_hcd *ehci, struct ehci_qtd *qtd,
@@ -69,8 +72,11 @@ static void qh_destroy(struct ehci_hcd *ehci, struct ehci_qh *qh)
 	/* clean qtds first, and know this is not linked */
 	if (!list_empty (&qh->qtd_list) || qh->qh_next.ptr) {
 		ehci_dbg (ehci, "unused qh not empty!\n");
-		BUG ();
-	}
+	//	BUG ();
+                printk("%s :kernel BUG .......ehci-mem.c:72! \n", __func__);
+                mdm_apcdmp_IMC726X_execute();
+                mdm_apcdmp_waiting_coredump_recevied_then_BUG();
+        }
 	if (qh->dummy)
 		ehci_qtd_free (ehci, qh->dummy);
 	dma_pool_free(ehci->qh_pool, qh->hw, qh->qh_dma);

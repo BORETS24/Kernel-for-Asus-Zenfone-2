@@ -1,5 +1,5 @@
 /*
- * drivers/cpufreq/cpufreq_interactivex.c
+ * drivers/cpufreq/cpufreq_interactive.c
  *
  * Copyright (C) 2010 Google, Inc.
  *
@@ -14,7 +14,7 @@
  *
  * Author: Mike Chan (mike@android.com)
  * Modified for early suspend support and hotplugging by imoseyon (imoseyon@gmail.com)
- *   interactiveX V2
+ *   interactive V2
    Modified for Quad core devices by BORETS24
  *
  */
@@ -40,7 +40,7 @@
 static atomic_t active_count = ATOMIC_INIT(0);
 static unsigned long stored_timer_rate;
 
-struct cpufreq_interactivex_cpuinfo {
+struct cpufreq_interactive_cpuinfo {
 	struct timer_list cpu_timer;
 	int timer_idlecancel;
 	u64 time_in_idle;
@@ -55,7 +55,7 @@ struct cpufreq_interactivex_cpuinfo {
 	int governor_enabled;
 };
 
-static DEFINE_PER_CPU(struct cpufreq_interactivex_cpuinfo, cpuinfo);
+static DEFINE_PER_CPU(struct cpufreq_interactive_cpuinfo, cpuinfo);
 
 /* Workqueues handle frequency scaling */
 static struct task_struct *up_task;
@@ -105,7 +105,7 @@ struct cpufreq_governor cpufreq_gov_interactivex = {
 };
 
 #define cputime64_sub(__a, __b)         ((__a) - (__b))
-static void cpufreq_interactivex_timer(unsigned long data)
+static void cpufreq_interactive_timer(unsigned long data)
 {
 	unsigned int delta_idle;
 	unsigned int delta_time;
@@ -113,7 +113,7 @@ static void cpufreq_interactivex_timer(unsigned long data)
 	int load_since_change;
 	u64 time_in_idle;
 	u64 idle_exit_time;
-	struct cpufreq_interactivex_cpuinfo *pcpu =
+	struct cpufreq_interactive_cpuinfo *pcpu =
 		&per_cpu(cpuinfo, data);
 	u64 now_idle;
 	unsigned int new_freq;
@@ -257,9 +257,9 @@ exit:
 	return;
 }
 
-static void cpufreq_interactivex_idle_start(void)
+static void cpufreq_interactive_idle_start(void)
 {
-	struct cpufreq_interactivex_cpuinfo *pcpu =
+	struct cpufreq_interactive_cpuinfo *pcpu =
 		&per_cpu(cpuinfo, smp_processor_id());
 	int pending;
 
@@ -309,9 +309,9 @@ static void cpufreq_interactivex_idle_start(void)
 
 }
 
-static void cpufreq_interactivex_idle_end(void)
+static void cpufreq_interactive_idle_end(void)
 {
-	struct cpufreq_interactivex_cpuinfo *pcpu =
+	struct cpufreq_interactive_cpuinfo *pcpu =
 		&per_cpu(cpuinfo, smp_processor_id());
 
 	pcpu->idling = 0;
@@ -341,12 +341,12 @@ static void cpufreq_interactivex_idle_end(void)
 
 }
 
-static int cpufreq_interactivex_up_task(void *data)
+static int cpufreq_interactive_up_task(void *data)
 {
 	unsigned int cpu;
 	cpumask_t tmp_mask;
 	unsigned long flags;
-	struct cpufreq_interactivex_cpuinfo *pcpu;
+	struct cpufreq_interactive_cpuinfo *pcpu;
 
 	while (1) {
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -380,7 +380,7 @@ static int cpufreq_interactivex_up_task(void *data)
 			mutex_lock(&set_speed_lock);
 
 			for_each_cpu(j, pcpu->policy->cpus) {
-				struct cpufreq_interactivex_cpuinfo *pjcpu =
+				struct cpufreq_interactive_cpuinfo *pjcpu =
 					&per_cpu(cpuinfo, j);
 
 				if (pjcpu->target_freq > max_freq)
@@ -402,12 +402,12 @@ static int cpufreq_interactivex_up_task(void *data)
 	return 0;
 }
 
-static void cpufreq_interactivex_freq_down(struct work_struct *work)
+static void cpufreq_interactive_freq_down(struct work_struct *work)
 {
 	unsigned int cpu;
 	cpumask_t tmp_mask;
 	unsigned long flags;
-	struct cpufreq_interactivex_cpuinfo *pcpu;
+	struct cpufreq_interactive_cpuinfo *pcpu;
 
 	spin_lock_irqsave(&down_cpumask_lock, flags);
 	tmp_mask = down_cpumask;
@@ -427,7 +427,7 @@ static void cpufreq_interactivex_freq_down(struct work_struct *work)
 		mutex_lock(&set_speed_lock);
 
 		for_each_cpu(j, pcpu->policy->cpus) {
-			struct cpufreq_interactivex_cpuinfo *pjcpu =
+			struct cpufreq_interactive_cpuinfo *pjcpu =
 				&per_cpu(cpuinfo, j);
 
 			if (pjcpu->target_freq > max_freq)
@@ -545,14 +545,14 @@ static struct attribute *interactivex_attributes[] = {
 
 static struct attribute_group interactivex_attr_group = {
 	.attrs = interactivex_attributes,
-	.name = "interactivex",
+	.name = "interactiveX",
 };
 
-static void __cpuinit interactivex_suspend(int suspend)
+static void __cpuinit interactive_suspend(int suspend)
 {
         unsigned int cpu;
         cpumask_t tmp_mask;
-        struct cpufreq_interactivex_cpuinfo *pcpu;
+        struct cpufreq_interactive_cpuinfo *pcpu;
 
         if (!enabled) return;
 	  if (!suspend) { 
@@ -567,7 +567,7 @@ static void __cpuinit interactivex_suspend(int suspend)
 		  __cpufreq_driver_target(pcpu->policy, hispeed_freq, CPUFREQ_RELATION_L);
 		}
 		mutex_unlock(&set_speed_lock);
-                pr_info("[imoseyon] interactivex awake cpu2,3 up\n");
+                pr_info("[imoseyon] interactive awake cpu2,3 up\n");
 	  } else {
 		mutex_lock(&set_speed_lock);
 		for_each_cpu(cpu, &tmp_mask) {
@@ -580,24 +580,24 @@ static void __cpuinit interactivex_suspend(int suspend)
 		if (num_online_cpus() > 1) cpu_down(2);
 		if (num_online_cpus() > 1) cpu_down(3);
 		mutex_unlock(&set_speed_lock);
-                pr_info("[imoseyon] interactivex suspended cpu2,3 down\n");
+                pr_info("[imoseyon] interactive suspended cpu2,3 down\n");
 	  }
 }
 
-static void __cold interactivex_early_suspend(struct early_suspend *handler) {
+static void __cold interactive_early_suspend(struct early_suspend *handler) {
      stored_timer_rate = timer_rate;
      timer_rate = DEFAULT_TIMER_RATE * 10;
-     if (!registration) interactivex_suspend(1);
+     if (!registration) interactive_suspend(1);
 }
 
-static void __cold interactivex_late_resume(struct early_suspend *handler) {
-     interactivex_suspend(0);
+static void __cold interactive_late_resume(struct early_suspend *handler) {
+     interactive_suspend(0);
      timer_rate = stored_timer_rate;
 }
 
-static struct early_suspend interactivex_power_suspend = {
-        .suspend = interactivex_early_suspend,
-        .resume = interactivex_late_resume,
+static struct early_suspend interactive_power_suspend = {
+        .suspend = interactive_early_suspend,
+        .resume = interactive_late_resume,
         .level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 1,
 };
 
@@ -606,7 +606,7 @@ static int cpufreq_governor_interactivex(struct cpufreq_policy *policy,
 {
 	int rc;
 	unsigned int j;
-	struct cpufreq_interactivex_cpuinfo *pcpu;
+	struct cpufreq_interactive_cpuinfo *pcpu;
 	struct cpufreq_frequency_table *freq_table;
 
 	switch (event) {
@@ -646,7 +646,7 @@ static int cpufreq_governor_interactivex(struct cpufreq_policy *policy,
 
 		enabled = 1;
 		registration = 1;
-                register_early_suspend(&interactivex_power_suspend);
+                register_early_suspend(&interactive_power_suspend);
 		registration = 0;
                 pr_info("[imoseyon] interactivex start\n");
 		break;
@@ -675,8 +675,8 @@ static int cpufreq_governor_interactivex(struct cpufreq_policy *policy,
 				&interactivex_attr_group);
 
 		enabled = 0;
-                unregister_early_suspend(&interactivex_power_suspend);
-                pr_info("[imoseyon] interactivex inactive\n");
+                unregister_early_suspend(&interactive_power_suspend);
+                pr_info("[imoseyon] interactiveX inactive\n");
 		break;
 
 	case CPUFREQ_GOV_LIMITS:
@@ -691,30 +691,30 @@ static int cpufreq_governor_interactivex(struct cpufreq_policy *policy,
 	return 0;
 }
 
-static int cpufreq_interactivex_idle_notifier(struct notifier_block *nb,
+static int cpufreq_interactive_idle_notifier(struct notifier_block *nb,
 					     unsigned long val,
 					     void *data)
 {
 	switch (val) {
 	case IDLE_START:
-		cpufreq_interactivex_idle_start();
+		cpufreq_interactive_idle_start();
 		break;
 	case IDLE_END:
-		cpufreq_interactivex_idle_end();
+		cpufreq_interactive_idle_end();
 		break;
 	}
 
 	return 0;
 }
 
-static struct notifier_block cpufreq_interactivex_idle_nb = {
-	.notifier_call = cpufreq_interactivex_idle_notifier,
+static struct notifier_block cpufreq_interactive_idle_nb = {
+	.notifier_call = cpufreq_interactive_idle_notifier,
 };
 
 static int __init cpufreq_interactivex_init(void)
 {
 	unsigned int i;
-	struct cpufreq_interactivex_cpuinfo *pcpu;
+	struct cpufreq_interactive_cpuinfo *pcpu;
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
 
 	go_hispeed_load = DEFAULT_GO_HISPEED_LOAD;
@@ -725,12 +725,12 @@ static int __init cpufreq_interactivex_init(void)
 	for_each_possible_cpu(i) {
 		pcpu = &per_cpu(cpuinfo, i);
 		init_timer(&pcpu->cpu_timer);
-		pcpu->cpu_timer.function = cpufreq_interactivex_timer;
+		pcpu->cpu_timer.function = cpufreq_interactive_timer;
 		pcpu->cpu_timer.data = i;
 	}
 
-	up_task = kthread_create(cpufreq_interactivex_up_task, NULL,
-				 "kinteractivexup");
+	up_task = kthread_create(cpufreq_interactive_up_task, NULL,
+				 "kinteractiveup");
 	if (IS_ERR(up_task))
 		return PTR_ERR(up_task);
 
@@ -745,13 +745,13 @@ static int __init cpufreq_interactivex_init(void)
 		goto err_freeuptask;
 
 	INIT_WORK(&freq_scale_down_work,
-		  cpufreq_interactivex_freq_down);
+		  cpufreq_interactive_freq_down);
 
 	spin_lock_init(&up_cpumask_lock);
 	spin_lock_init(&down_cpumask_lock);
 	mutex_init(&set_speed_lock);
 
-	idle_notifier_register(&cpufreq_interactivex_idle_nb);
+	idle_notifier_register(&cpufreq_interactive_idle_nb);
 
 	return cpufreq_register_governor(&cpufreq_gov_interactivex);
 

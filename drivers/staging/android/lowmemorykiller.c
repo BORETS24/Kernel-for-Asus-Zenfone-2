@@ -117,11 +117,10 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 				}
 			}
 
-			for (i = 0; i < 1; i++) {
+			for (i = 0; i < array_size/2; i++) {
 				// 6*1024 will cause some fail case
 				// EX : TT 634316
 				minfree = lowmem_minfree[i];
-
 				if (dma32_free && dma32_free < minfree
 						&& dma32_file < minfree) {
 					min_score_adj = lowmem_adj[i];

@@ -3687,6 +3687,14 @@ static int mux_base_conf_set(const char *kmessage, struct kernel_param *kp)
 	strcpy(mux_base_config, kmessage);
 	return 0;
 }
+#include <linux/gsmmux.h>
+#define N_GSM0710	21	/* GSM 0710 Mux */
+#define DEFAULT_SPEED	B115200
+#define SERIAL_PORT	/dev/ttyS0
+
+	int ldisc = N_GSM0710;
+	struct gsm_config c;
+	struct termios configuration;
 
 module_param_call(mux_base_conf, mux_base_conf_set, param_get_string, &mux_conf, 0644);
 

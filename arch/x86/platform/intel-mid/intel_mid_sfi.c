@@ -76,11 +76,9 @@ static int PROJECT_ID;
 static int HARDWARE_ID;
 static int PCB_ID;
 static int LCD_ID;
-#ifdef CONFIG_A500CG
-static int TP_ID;
-#endif
 static int RF_SKU_ID;
 static int SIM_ID;
+static int TP_ID;
 
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
 EXPORT_SYMBOL_GPL(sfi_mrtc_array);
@@ -146,6 +144,7 @@ static int __init sfi_parse_oemr(struct sfi_table_header *table)
 	LCD_ID = pentry->lcd_id;
         RF_SKU_ID = pentry->RF_SKU;
 	SIM_ID = pentry->sim_id;
+	TP_ID = pentry->tp_id;
         printk("\nHardware ID = 0x%x, Project ID = 0x%x, LCD_ID = 0x%x, RF_SKU_ID = 0x%x\n",HARDWARE_ID, PROJECT_ID, LCD_ID,RF_SKU_ID);
 //<ASUS-Wade+>
         if (PROJECT_ID == PROJ_ID_ZE551ML_ESE) {
@@ -879,7 +878,6 @@ int Read_PCB_ID(void)
 }
 EXPORT_SYMBOL(Read_PCB_ID);
 
-#ifdef CONFIG_A500CG
 static int tp_id;
 module_param(tp_id, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(PCB_VERSION,
@@ -892,7 +890,6 @@ int Read_TP_ID(void)
 	return TP_ID;
 }
 EXPORT_SYMBOL(Read_TP_ID);
-#endif
 
 static int lcd_id;
 module_param(lcd_id, int, S_IRUGO | S_IWUSR);
@@ -939,6 +936,23 @@ EXPORT_SYMBOL(Read_LCD_ID);
 	}
 #endif
 //---------------------lynn 2014/10/11 FAC----------------------
+
+static int Camera_Status;
+module_param(Camera_Status, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(PCB_VERSION, "Camera Status ");
+
+int Get_Camera_Status(void)
+{
+	return Camera_Status;
+}
+EXPORT_SYMBOL(Get_Camera_Status);
+
+void Set_Camera_Status(int status)
+{
+	Camera_Status = status;
+}
+EXPORT_SYMBOL(Set_Camera_Status);
+
 
 //Ben_modified
 static int boot_mode;
@@ -998,12 +1012,16 @@ static int __init intel_mid_platform_init(void)
 	sfi_table_parse(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
 	sfi_table_parse(SFI_SIG_OEMR, NULL, NULL, sfi_parse_oemr);
 
+	/* Initialize Camera Status*/
+	Camera_Status = CAMERA_OFF;
+
 	/* Initialize the IDs */
 	Read_PROJ_ID();
 	Read_HW_ID();
 	Read_PCB_ID();
 	Read_LCD_ID();
         Read_SIM_ID();
+	Read_TP_ID();
 #ifndef CONFIG_A500CG
         Read_RF_SKU_ID();
 #endif

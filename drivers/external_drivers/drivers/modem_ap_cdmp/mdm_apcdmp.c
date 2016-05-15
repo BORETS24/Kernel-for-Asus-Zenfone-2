@@ -61,7 +61,7 @@ struct devone_data {
 
 static void debug_work_handler(struct work_struct *work)
 {
-        pr_info(DRVNAME ": %s = %d \n",__func__);
+        pr_info(DRVNAME ": %s \n",__func__);
         BUG();
 }
 /**

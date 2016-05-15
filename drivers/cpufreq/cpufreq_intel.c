@@ -36,6 +36,8 @@
 #include <linux/input.h>
 #include <asm/cputime.h>
 #include <linux/module.h>
+#include <linux/sched/rt.h>
+#include <linux/earlysuspend.h>
 
 #include "sfi-cpufreq.h"
 
@@ -162,7 +164,7 @@ static unsigned long use_physical_core_load;
  * Boost pulse to hispeed on touchscreen input.
  */
 
-static int input_boost_val = 1;
+static int input_boost_val;
 
 /*
  * If cpu_load is greater than cpu_intensive_load, the
@@ -180,6 +182,36 @@ static unsigned int gpu_intensive_load_val;
 static unsigned long cpu_down_differential;
 #define DEFAULT_GPU_BUSY_LOAD 40
 static unsigned long gpu_busy_load;
+
+static void off_early_suspend(struct early_suspend *h) {
+	unsigned int cpu;
+
+	/* unplug online cpu cores */
+		for_each_present_cpu(cpu)
+			if (cpu && cpu_online(cpu))
+				cpu_down(2);
+				cpu_down(3);
+
+	
+	pr_info("suspended\n");
+}
+
+static void __cpuinit off_late_resume(struct early_suspend *h) {
+	unsigned int cpu;
+
+		for_each_present_cpu(cpu)
+			if (!cpu_online(cpu))
+				cpu_up(cpu);
+	
+	pr_info("resumed\n");
+}
+
+static struct early_suspend __refdata off_early_suspend_handler = {
+	.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN,
+	.suspend = off_early_suspend,
+	.resume = off_late_resume,
+};
+
 
 /*
  * io_is_busy flag exposed so that it can be controlled
@@ -1263,6 +1295,7 @@ static int cpufreq_governor_intel(struct cpufreq_policy *policy,
 			return rc;
 
 		rc = input_register_handler(&cpufreq_intel_input_handler);
+		register_early_suspend(&off_early_suspend_handler);
 		if (rc)
 			pr_warn("%s: failed to register input handler\n",
 				__func__);
@@ -1291,6 +1324,7 @@ static int cpufreq_governor_intel(struct cpufreq_policy *policy,
 			return 0;
 
 		input_unregister_handler(&cpufreq_intel_input_handler);
+		unregister_early_suspend(&off_early_suspend_handler);
 		sysfs_remove_group(cpufreq_global_kobject,
 				&intel_attr_group);
 

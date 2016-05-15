@@ -14,7 +14,6 @@
  *
  * Author: Mike Chan (mike@android.com)
  *
- * Hotplugging idea by TheSSJ
  */
 
 #include <linux/cpu.h>
@@ -33,10 +32,7 @@
 #include <linux/slab.h>
 #include <linux/kernel_stat.h>
 #include <asm/cputime.h>
-
-//for adding early suspend and late resume handlers
 #include <linux/earlysuspend.h>
-#include <linux/wait.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/cpufreq_interactive.h>
@@ -68,7 +64,6 @@ struct cpufreq_interactive_cpuinfo {
 static DEFINE_PER_CPU(struct cpufreq_interactive_cpuinfo, cpuinfo);
 static int boot_boost;
 
-
 /* realtime thread handles frequency scaling */
 static struct task_struct *speedchange_task;
 static cpumask_t speedchange_cpumask;
@@ -79,8 +74,8 @@ static struct mutex gov_lock;
 #define DEFAULT_TARGET_LOAD 90
 static unsigned int default_target_loads[] = {DEFAULT_TARGET_LOAD};
 
-#define DEFAULT_TIMER_RATE (15 * USEC_PER_MSEC)
-#define DEFAULT_ABOVE_HISPEED_DELAY DEFAULT_TIMER_RATE + 25000
+#define DEFAULT_TIMER_RATE (20 * USEC_PER_MSEC)
+#define DEFAULT_ABOVE_HISPEED_DELAY DEFAULT_TIMER_RATE
 static unsigned int default_above_hispeed_delay[] = {
 	DEFAULT_ABOVE_HISPEED_DELAY };
 
@@ -97,7 +92,9 @@ struct cpufreq_interactive_tunables {
 	/*
 	 * Frequency to which a touch boost takes the cpus to
 	 */
-	unsigned long touchboost_freq;
+	//unsigned long touchboost_freq;
+
+	unsigned long rotationboost_freq;
 	/* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
 	unsigned long go_hispeed_load;
@@ -109,7 +106,7 @@ struct cpufreq_interactive_tunables {
 	 * The minimum amount of time to spend at a frequency before we can ramp
 	 * down.
 	 */
-#define DEFAULT_MIN_SAMPLE_TIME (40 * USEC_PER_MSEC)
+#define DEFAULT_MIN_SAMPLE_TIME (80 * USEC_PER_MSEC)
 	unsigned long min_sample_time;
 	/*
 	 * The sample rate of the timer used to increase frequency
@@ -129,14 +126,18 @@ struct cpufreq_interactive_tunables {
 	/* End time of boost pulse in ktime converted to usecs */
 	u64 boostpulse_endtime;
 	/* Duration of a touchboost pulse in usecs */
-	int touchboostpulse_duration_val;
+	//int touchboostpulse_duration_val;
 	/* End time of touchboost pulse in ktime converted to usecs */
-	u64 touchboostpulse_endtime;
+	//u64 touchboostpulse_endtime;
+	/* Duration of a rotationboost pulse in usecs */
+	int rotationboostpulse_duration_val;
+	/* End time of rotationboost pulse in ktime converted to usecs */
+	u64 rotationboostpulse_endtime;
 	/*
 	 * Max additional time to wait in idle, beyond timer_rate, at speeds
 	 * above minimum before wakeup to reduce speed, or -1 if unnecessary.
 	 */
-#define DEFAULT_TIMER_SLACK (4 * DEFAULT_TIMER_RATE) + 20000
+#define DEFAULT_TIMER_SLACK (4 * DEFAULT_TIMER_RATE)
 	int timer_slack_val;
 	bool io_is_busy;
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
@@ -154,6 +155,35 @@ struct cpufreq_interactive_tunables *common_tunables;
 
 static struct attribute_group *get_sysfs_attr(void);
 
+static void off_early_suspend(struct early_suspend *h) {
+	unsigned int cpu;
+
+	/* unplug online cpu cores */
+		for_each_present_cpu(cpu)
+			if (cpu && cpu_online(cpu))
+				cpu_down(2);
+				cpu_down(3);
+
+	
+	pr_info("suspended\n");
+}
+
+static void __cpuinit off_late_resume(struct early_suspend *h) {
+	unsigned int cpu;
+
+		for_each_present_cpu(cpu)
+			if (!cpu_online(cpu))
+				cpu_up(cpu);
+	
+	pr_info("resumed\n");
+}
+
+static struct early_suspend __refdata off_early_suspend_handler = {
+	.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN,
+	.suspend = off_early_suspend,
+	.resume = off_late_resume,
+};
+
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 DECLARE_PER_CPU(u64, cpu_hardirq_time);
 DECLARE_PER_CPU(u64, cpu_softirq_time);
@@ -167,36 +197,6 @@ static inline u64 irq_time_read(int cpu)
 	return irq_time;
 }
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
-static void __cpuinit early_suspend_offline_cpus(struct early_suspend *h)
-{
-	unsigned int cpu;
-	for_each_possible_cpu(cpu)
-	{
-		if (cpu<1) //begin offline work at core 2
-			continue;
-		
-		if (cpu_online(cpu) && num_online_cpus() > 1) //get 3 cores down, cores 2, 3 and 4 
-			cpu_down(cpu);
-	}
-	
-}
-
-static void __cpuinit late_resume_online_cpus(struct early_suspend *h)
-{
-	unsigned int cpu;	
-	for_each_possible_cpu(cpu)
-	{
-		if (!cpu_online(cpu) && num_online_cpus() < 4) //get all up 
-			cpu_up(cpu);
-	}
-	
-}
-
-static struct early_suspend hotplug_auxcpus_desc __refdata = {
-	.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN,
-	.suspend = early_suspend_offline_cpus,
-	.resume = late_resume_online_cpus,
-};
 
 static inline cputime64_t get_cpu_idle_time_jiffy(unsigned int cpu,
 						  cputime64_t *wall)
@@ -567,9 +567,13 @@ static void cpufreq_interactive_timer(unsigned long data)
 		}
 	} else {
 		new_freq = choose_freq(pcpu, loadadjfreq);
-		if (now < tunables->touchboostpulse_endtime) {
-			if (new_freq < tunables->touchboost_freq)
-				new_freq = tunables->touchboost_freq;
+		//if (now < tunables->touchboostpulse_endtime) {
+		//	if (new_freq < tunables->touchboost_freq)
+		//		new_freq = 500000;
+		//	}
+		if (now < tunables->rotationboostpulse_endtime) {
+			if (new_freq < tunables->rotationboost_freq)
+				new_freq = tunables->rotationboost_freq;
 			}
 	}
 
@@ -815,7 +819,7 @@ static void cpufreq_interactive_boost(void)
 		wake_up_process(speedchange_task);
 }
 
-static void cpufreq_interactive_touchboost(void)
+/*static void cpufreq_interactive_touchboost(void)
 {
 	int i;
 	int anyboost = 0;
@@ -830,14 +834,14 @@ static void cpufreq_interactive_touchboost(void)
 			continue;
 		if (pcpu->governor_enabled == 0) {
 			/* CPU might have been down. Skip it */
-			up_read(&pcpu->enable_sem);
+			/*up_read(&pcpu->enable_sem);
 			continue;
 		}
 		tunables = pcpu->policy->governor_data;
 
 		spin_lock_irqsave(&speedchange_cpumask_lock, flags);
 	if (pcpu->target_freq < tunables->touchboost_freq) {
-			pcpu->target_freq = tunables->touchboost_freq;
+			pcpu->target_freq = 500000;
 			cpumask_set_cpu(i, &speedchange_cpumask);
 			pcpu->hispeed_validate_time =
 					ktime_to_us(ktime_get());
@@ -849,12 +853,42 @@ static void cpufreq_interactive_touchboost(void)
 	freq is set only if the new_freq is more than
 	hispeed_freq which is not the case here*/
 
+//	}
+
+//	if (anyboost)
+//		wake_up_process(speedchange_task);
+//}
+
+static void cpufreq_interactive_rotationboost(void)
+{
+	int i;
+	int anyboost = 0;
+	unsigned long flags;
+	struct cpufreq_interactive_cpuinfo *pcpu;
+	struct cpufreq_interactive_tunables *tunables;
+
+	spin_lock_irqsave(&speedchange_cpumask_lock, flags);
+	for_each_online_cpu(i) {
+		pcpu = &per_cpu(cpuinfo, i);
+		tunables = pcpu->policy->governor_data;
+
+	if (pcpu->target_freq < tunables->rotationboost_freq) {
+			pcpu->target_freq = tunables->rotationboost_freq;
+			cpumask_set_cpu(i, &speedchange_cpumask);
+			pcpu->hispeed_validate_time =
+					ktime_to_us(ktime_get());
+			anyboost = 1;
+		}
+	/* no need to set floor freq to touchboost freq as floor
+	freq is set only if the new_freq is more than
+	hispeed_freq which is not the case here*/
+
 	}
 
+	spin_unlock_irqrestore(&speedchange_cpumask_lock, flags);
 	if (anyboost)
 		wake_up_process(speedchange_task);
 }
-
 
 static int cpufreq_interactive_notifier(
 	struct notifier_block *nb, unsigned long val, void *data)
@@ -1064,7 +1098,7 @@ static ssize_t store_go_hispeed_load(struct cpufreq_interactive_tunables
 	return count;
 }
 
-static ssize_t show_touchboost_freq(struct cpufreq_interactive_tunables
+/*static ssize_t show_touchboost_freq(struct cpufreq_interactive_tunables
 		*tunables, char *buf)
 {
 	return sprintf(buf, "%lu\n", tunables->touchboost_freq);
@@ -1080,6 +1114,25 @@ static ssize_t store_touchboost_freq(struct cpufreq_interactive_tunables
 	if (ret < 0)
 		return ret;
 	tunables->touchboost_freq = val;
+	return count;
+}*/
+
+static ssize_t show_rotationboost_freq(struct cpufreq_interactive_tunables
+		*tunables, char *buf)
+{
+	return sprintf(buf, "%lu\n", tunables->rotationboost_freq);
+}
+
+static ssize_t store_rotationboost_freq(struct cpufreq_interactive_tunables
+				*tunables, const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	tunables->rotationboost_freq = val;
 	return count;
 }
 
@@ -1159,12 +1212,7 @@ static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
 
 	tunables->boost_val = val;
 
-	if (tunables->boost_val == 2) {
-		tunables->boostpulse_endtime = ktime_to_us(ktime_get()) + 5000000;
-                trace_cpufreq_interactive_boost("pulse");
-                cpufreq_interactive_boost();
-                tunables->boost_val = 0;
-	} else if (tunables->boost_val) {
+	if (tunables->boost_val) {
 		trace_cpufreq_interactive_boost("on");
 		cpufreq_interactive_boost();
 	} else {
@@ -1174,30 +1222,6 @@ static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
 	return count;
 }
 
-void set_cpufreq_boost(unsigned long val)
-{
-        struct cpufreq_interactive_cpuinfo *pcpu =
-		&per_cpu(cpuinfo, raw_smp_processor_id());
-
-        struct cpufreq_interactive_tunables *tunables =
-		pcpu->policy->governor_data;
-
-        tunables->boost_val = val;
-        if (tunables->boost_val == 2) {
-                tunables->boostpulse_endtime = ktime_to_us(ktime_get()) + 5000000;
-                trace_cpufreq_interactive_boost("pulse");
-                cpufreq_interactive_boost();
-                tunables->boost_val = 0;
-        } else if (tunables->boost_val) {
-                trace_cpufreq_interactive_boost("on");
-                cpufreq_interactive_boost();
-        } else {
-                trace_cpufreq_interactive_unboost("off");
-        }
-
-	return;
-}
-EXPORT_SYMBOL_GPL(set_cpufreq_boost);
 static ssize_t store_boostpulse(struct cpufreq_interactive_tunables *tunables,
 				const char *buf, size_t count)
 {
@@ -1235,7 +1259,32 @@ static ssize_t store_boostpulse_duration(struct cpufreq_interactive_tunables
 	return count;
 }
 
-static ssize_t store_touchboostpulse(struct cpufreq_interactive_tunables
+void set_cpufreq_boost(unsigned long val)
+{
+        struct cpufreq_interactive_cpuinfo *pcpu =
+		&per_cpu(cpuinfo, raw_smp_processor_id());
+
+        struct cpufreq_interactive_tunables *tunables =
+		pcpu->policy->governor_data;
+
+        tunables->boost_val = val;
+        if (tunables->boost_val == 2) {
+                tunables->boostpulse_endtime = ktime_to_us(ktime_get()) + 5000000;
+                trace_cpufreq_interactive_boost("pulse");
+                cpufreq_interactive_boost();
+                tunables->boost_val = 0;
+        } else if (tunables->boost_val) {
+                trace_cpufreq_interactive_boost("on");
+                cpufreq_interactive_boost();
+        } else {
+                trace_cpufreq_interactive_unboost("off");
+        }
+
+	return;
+}
+EXPORT_SYMBOL_GPL(set_cpufreq_boost);
+
+/*static ssize_t store_touchboostpulse(struct cpufreq_interactive_tunables
 		*tunables, const char *buf, size_t count)
 {
 	int ret;
@@ -1277,6 +1326,44 @@ static ssize_t store_touchboostpulse_duration(
 		return ret;
 
 	tunables->touchboostpulse_duration_val = val;
+	return count;
+}*/
+
+static ssize_t store_rotationboostpulse(struct cpufreq_interactive_tunables
+		*tunables, const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	printk(KERN_INFO "store_rotationboostpulse\n");
+	tunables->rotationboostpulse_endtime = ktime_to_us(ktime_get())
+				+ tunables->rotationboostpulse_duration_val;
+	trace_cpufreq_interactive_boost("pulse");
+	cpufreq_interactive_rotationboost();
+	return count;
+}
+
+static ssize_t show_rotationboostpulse_duration(struct cpufreq_interactive_tunables
+		*tunables, char *buf)
+{
+	return sprintf(buf, "%d\n", tunables->rotationboostpulse_duration_val);
+}
+
+static ssize_t store_rotationboostpulse_duration(
+	struct cpufreq_interactive_tunables *tunables,
+	const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	tunables->rotationboostpulse_duration_val = val;
 	return count;
 }
 
@@ -1379,15 +1466,18 @@ show_store_gov_pol_sys(target_loads);
 show_store_gov_pol_sys(above_hispeed_delay);
 show_store_gov_pol_sys(hispeed_freq);
 show_store_gov_pol_sys(go_hispeed_load);
-show_store_gov_pol_sys(touchboost_freq);
+//show_store_gov_pol_sys(touchboost_freq);
+show_store_gov_pol_sys(rotationboost_freq);
 show_store_gov_pol_sys(min_sample_time);
 show_store_gov_pol_sys(timer_rate);
 show_store_gov_pol_sys(timer_slack);
 show_store_gov_pol_sys(boost);
 store_gov_pol_sys(boostpulse);
 show_store_gov_pol_sys(boostpulse_duration);
-store_gov_pol_sys(touchboostpulse);
-show_store_gov_pol_sys(touchboostpulse_duration);
+//store_gov_pol_sys(touchboostpulse);
+//show_store_gov_pol_sys(touchboostpulse_duration);
+store_gov_pol_sys(rotationboostpulse);
+show_store_gov_pol_sys(rotationboostpulse_duration);
 show_store_gov_pol_sys(io_is_busy);
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 show_store_gov_pol_sys(irq_load_threshold);
@@ -1410,13 +1500,15 @@ gov_sys_pol_attr_rw(target_loads);
 gov_sys_pol_attr_rw(above_hispeed_delay);
 gov_sys_pol_attr_rw(hispeed_freq);
 gov_sys_pol_attr_rw(go_hispeed_load);
-gov_sys_pol_attr_rw(touchboost_freq);
+//gov_sys_pol_attr_rw(touchboost_freq);
+gov_sys_pol_attr_rw(rotationboost_freq);
 gov_sys_pol_attr_rw(min_sample_time);
 gov_sys_pol_attr_rw(timer_rate);
 gov_sys_pol_attr_rw(timer_slack);
 gov_sys_pol_attr_rw(boost);
 gov_sys_pol_attr_rw(boostpulse_duration);
-gov_sys_pol_attr_rw(touchboostpulse_duration);
+//gov_sys_pol_attr_rw(touchboostpulse_duration);
+gov_sys_pol_attr_rw(rotationboostpulse_duration);
 gov_sys_pol_attr_rw(io_is_busy);
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 gov_sys_pol_attr_rw(irq_load_threshold);
@@ -1424,24 +1516,30 @@ gov_sys_pol_attr_rw(iowait_load_threshold);
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 
 static struct global_attr boostpulse_gov_sys =
-	__ATTR(boostpulse, 0222, NULL, store_boostpulse_gov_sys);
+	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_sys);
 
 static struct freq_attr boostpulse_gov_pol =
-	__ATTR(boostpulse, 0222, NULL, store_boostpulse_gov_pol);
+	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_pol);
 
-static struct global_attr touchboostpulse_gov_sys =
-	__ATTR(touchboostpulse, 0222, NULL, store_touchboostpulse_gov_sys);
+/*static struct global_attr touchboostpulse_gov_sys =
+	__ATTR(touchboostpulse, 0200, NULL, store_touchboostpulse_gov_sys);
 
 static struct freq_attr touchboostpulse_gov_pol =
-	__ATTR(touchboostpulse, 0222, NULL, store_touchboostpulse_gov_pol);
+	__ATTR(touchboostpulse, 0200, NULL, store_touchboostpulse_gov_pol);*/
 
+static struct global_attr rotationboostpulse_gov_sys =
+	__ATTR(rotationboostpulse, 0200, NULL, store_rotationboostpulse_gov_sys);
+
+static struct freq_attr rotationboostpulse_gov_pol =
+	__ATTR(trotationboostpulse, 0200, NULL, store_rotationboostpulse_gov_pol);
 /* One Governor instance for entire system */
 static struct attribute *interactive_attributes_gov_sys[] = {
 	&target_loads_gov_sys.attr,
 	&above_hispeed_delay_gov_sys.attr,
 	&hispeed_freq_gov_sys.attr,
 	&go_hispeed_load_gov_sys.attr,
-	&touchboost_freq_gov_sys.attr,
+	//&touchboost_freq_gov_sys.attr,
+	&rotationboost_freq_gov_sys.attr,
 	&min_sample_time_gov_sys.attr,
 	&timer_rate_gov_sys.attr,
 	&timer_slack_gov_sys.attr,
@@ -1449,8 +1547,10 @@ static struct attribute *interactive_attributes_gov_sys[] = {
 	&boostpulse_gov_sys.attr,
 	&boostpulse_duration_gov_sys.attr,
 	&io_is_busy_gov_sys.attr,
-	&touchboostpulse_gov_sys.attr,
-	&touchboostpulse_duration_gov_sys.attr,
+	//&touchboostpulse_gov_sys.attr,
+	//&touchboostpulse_duration_gov_sys.attr,
+	&rotationboostpulse_gov_sys.attr,
+	&rotationboostpulse_duration_gov_sys.attr,
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	&irq_load_threshold_gov_sys.attr,
 	&iowait_load_threshold_gov_sys.attr,
@@ -1469,7 +1569,8 @@ static struct attribute *interactive_attributes_gov_pol[] = {
 	&above_hispeed_delay_gov_pol.attr,
 	&hispeed_freq_gov_pol.attr,
 	&go_hispeed_load_gov_pol.attr,
-	&touchboost_freq_gov_pol.attr,
+	//&touchboost_freq_gov_pol.attr,
+	&rotationboost_freq_gov_pol.attr,
 	&min_sample_time_gov_pol.attr,
 	&timer_rate_gov_pol.attr,
 	&timer_slack_gov_pol.attr,
@@ -1477,8 +1578,10 @@ static struct attribute *interactive_attributes_gov_pol[] = {
 	&boostpulse_gov_pol.attr,
 	&boostpulse_duration_gov_pol.attr,
 	&io_is_busy_gov_pol.attr,
-	&touchboostpulse_gov_pol.attr,
-	&touchboostpulse_duration_gov_pol.attr,
+	//&touchboostpulse_gov_pol.attr,
+	//&touchboostpulse_duration_gov_pol.attr,
+	&rotationboostpulse_gov_pol.attr,
+	&rotationboostpulse_duration_gov_pol.attr,
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	&irq_load_threshold_gov_pol.attr,
 	&iowait_load_threshold_gov_pol.attr,
@@ -1583,7 +1686,9 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		tunables->min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
 		tunables->timer_rate = DEFAULT_TIMER_RATE;
 		tunables->boostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
-		tunables->touchboostpulse_duration_val =
+		//tunables->touchboostpulse_duration_val =
+		//		DEFAULT_MIN_SAMPLE_TIME;
+		tunables->rotationboostpulse_duration_val =
 				DEFAULT_MIN_SAMPLE_TIME;
 		tunables->timer_slack_val = DEFAULT_TIMER_SLACK;
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
@@ -1592,7 +1697,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		tunables->io_busy = 0;
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 		if (boot_boost)
-//			tunables->boost_val = 1;
+			//tunables->boost_val = 1;
 
 		spin_lock_init(&tunables->target_loads_lock);
 		spin_lock_init(&tunables->above_hispeed_delay_lock);
@@ -1601,7 +1706,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			idle_notifier_register(&cpufreq_interactive_idle_nb);
 			cpufreq_register_notifier(&cpufreq_notifier_block,
 					CPUFREQ_TRANSITION_NOTIFIER);
-		register_early_suspend(&hotplug_auxcpus_desc);
+		register_early_suspend(&off_early_suspend_handler);
 		}
 
 		policy->governor_data = tunables;
@@ -1616,7 +1721,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 				cpufreq_unregister_notifier(&cpufreq_notifier_block,
 						CPUFREQ_TRANSITION_NOTIFIER);
 				idle_notifier_unregister(&cpufreq_interactive_idle_nb);
-				unregister_early_suspend(&hotplug_auxcpus_desc);
+		unregister_early_suspend(&off_early_suspend_handler);
 			}
 
 			sysfs_remove_group(get_governor_parent_kobj(policy),
@@ -1633,10 +1738,13 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 
 		freq_table = cpufreq_frequency_get_table(policy->cpu);
 		if (!tunables->hispeed_freq)
-			tunables->hispeed_freq = policy->max - 500000;
+			tunables->hispeed_freq = policy->max;
 
-		if (!tunables->touchboost_freq)
-			tunables->touchboost_freq = policy->max - 500000;
+		//if (!tunables->touchboost_freq)
+		//	tunables->touchboost_freq = policy->min;
+
+		if (!tunables->rotationboost_freq)
+			tunables->rotationboost_freq = policy->max;
 		for_each_cpu(j, policy->cpus) {
 			pcpu = &per_cpu(cpuinfo, j);
 			pcpu->policy = policy;

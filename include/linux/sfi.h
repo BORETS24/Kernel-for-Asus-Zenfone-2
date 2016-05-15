@@ -211,6 +211,7 @@ struct sfi_oemr_table_entry {
 	u8  sim_id;
 	u8  CAM_vendor;
 	u8  RF_SKU;
+	u8  tp_id;
 } __packed;
 
 #endif

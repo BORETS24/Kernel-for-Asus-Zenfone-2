@@ -2514,8 +2514,8 @@ MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("exFAT Filesystem Driver");
 #ifdef MODULE_ALIAS_FS
 #if defined(CONFIG_MACH_LGE) || defined(CONFIG_HTC_BATT_CORE)
-MODULE_ALIAS_FS("texfat");
+MODULE_ALIAS_FS("fs-texfat");
 #else
-MODULE_ALIAS_FS("texfat");
+MODULE_ALIAS_FS("fs-texfat");
 #endif
 #endif

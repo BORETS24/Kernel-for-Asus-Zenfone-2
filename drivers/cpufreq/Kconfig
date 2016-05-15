@@ -166,6 +166,12 @@ config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 	  loading your cpufreq low-level hardware driver, using the
 	  'interactive' governor for latency-sensitive workloads.
 
+config CPU_FREQ_DEFAULT_GOV_INTERACTIVE_PRO
+	bool "interactive_pro"
+	select CPU_FREQ_GOV_INTERACTIVE_PRO
+	help
+	Use the CPUFreq governor 'interactive_pro' as default.
+
 config CPU_FREQ_DEFAULT_GOV_INTERACTIVEX
   	bool "interactiveX"
   	select CPU_FREQ_GOV_INTERACTIVEX
@@ -331,6 +337,10 @@ config CPU_FREQ_GOV_INTERACTIVE
 
 	  If in doubt, say N.
 
+config CPU_FREQ_GOV_INTERACTIVE_PRO
+	tristate "'interactive_pro' cpufreq governor"
+	depends on CPU_FREQ
+
 config CPU_FREQ_GOV_INTERACTIVEX
 	tristate "'interactiveX' cpufreq governor"
 	depends on CPU_FREQ
@@ -383,25 +393,6 @@ config CPU_FREQ_GOV_SMARTASS2
 config CPU_FREQ_GOV_SMARTASSH3
 	tristate "SmartAssH3"
 
-
-config CPU_FREQ_GOV_INTEL
-	tristate "'intel' cpufreq policy governor"
-	help
-	  'intel' - This driver adds a dynamic cpufreq policy governor
-	  designed for Intel mobile platform.
-
-	  This governor uses physical core load, dynamic timer switching,
-	  dynamic sampling window sizing, and tailored CPU frequency scaling,
-	  which brings good performance, power efficiency and responsiveness
-	  to common Android applications with Intel mobile platforms.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called cpufreq_intel.
-
-	  For details, take a look at linux/Documentation/cpu-freq.
-
-	  If in doubt, say N.
-
 config CPU_FREQ_GOV_CONSERVATIVE
 	tristate "'conservative' cpufreq governor"
 	depends on CPU_FREQ
@@ -421,6 +412,32 @@ config CPU_FREQ_GOV_CONSERVATIVE
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called cpufreq_conservative.
+
+	  For details, take a look at linux/Documentation/cpu-freq.
+
+	  If in doubt, say N.
+
+config CPU_FREQ_GOV_CYAN
+	tristate "'cyan' cpufreq governor"
+	help
+	-Interactive governor based.
+	-Developed for heavy gaming and heavy proccesses.
+	-Compatible with all devices.
+	-Optimized CPU for speed.
+
+config CPU_FREQ_GOV_INTEL
+	tristate "'intel' cpufreq policy governor"
+	help
+	  'intel' - This driver adds a dynamic cpufreq policy governor
+	  designed for Intel mobile platform.
+
+	  This governor uses physical core load, dynamic timer switching,
+	  dynamic sampling window sizing, and tailored CPU frequency scaling,
+	  which brings good performance, power efficiency and responsiveness
+	  to common Android applications with Intel mobile platforms.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called cpufreq_intel.
 
 	  For details, take a look at linux/Documentation/cpu-freq.
 
@@ -540,6 +557,22 @@ config SH_CPU_FREQ
 
 	  If unsure, say N.
 endmenu
+
+config ASMP
+	bool "Multi-core automatic hotplug support"
+	depends on SMP
+	default n
+	help
+	  Automatically hotplugs the multiple cpu cores on and off
+	  based on cpu load and suspend state
+
+config MSM_HOTPLUG
+	bool "MSM hotplug driver"
+	default n
+	help
+	  The MSM hotplug driver controls on-/offlining of additional cores based
+	  on current cpu load.
+
 
 endif
 endmenu

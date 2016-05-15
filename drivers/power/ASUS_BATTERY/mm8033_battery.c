@@ -997,7 +997,6 @@ int mm8033_read_percentage(void)
 						if (ret < 0) {
 							GAUGE_ERR("reset OCV failed with ret=%d\n", ret);
 						} else {
-							msleep(100);
 							GAUGE_INFO("reset OCV success\n");
 						}
 					}
@@ -1008,7 +1007,6 @@ int mm8033_read_percentage(void)
 					if (ret < 0) {
 						GAUGE_ERR("reset OCV failed with ret=%d\n", ret);
 					} else {
-						msleep(100);
 						GAUGE_INFO("reset OCV success\n");
 					}
 				}
